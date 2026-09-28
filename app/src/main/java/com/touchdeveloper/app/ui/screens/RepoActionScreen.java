@@ -17,6 +17,7 @@ import com.touchdeveloper.app.safety.Confirmations;
 import com.touchdeveloper.app.ui.Screen;
 import com.touchdeveloper.app.ui.TaskRunner;
 import com.touchdeveloper.app.ui.Ui;
+import com.touchdeveloper.app.ui.UploadFlow;
 import com.touchdeveloper.app.util.Result;
 
 import java.io.File;
@@ -86,50 +87,92 @@ public class RepoActionScreen extends Screen {
     }
 
     private void uploadFiles() {
+        // Pick the file first: the user should not have to type a path before they
+        // can browse phone storage.
+        main.pickFile(new MainActivity.PickerCallback() {
+            @Override
+            public void onPicked(android.net.Uri uri) {
+                confirmTargetPath(uri);
+            }
+
+            @Override
+            public void onCancelled() {
+                main.toast("Upload cancelled. Nothing was changed.");
+            }
+        });
+    }
+
+    /**
+     * Asks for the repository path, prefilled from the picked file's name, then runs
+     * the existing import -> read -> stage flow.
+     */
+    private void confirmTargetPath(final android.net.Uri uri) {
+        String suggested = UploadFlow.suggestedTargetPath(
+                main.services().fileTransfer().displayName(uri));
+
         EditText pathInput = new EditText(main);
         pathInput.setInputType(InputType.TYPE_CLASS_TEXT);
         pathInput.setHint("Target path, e.g. app/src/main/java/Foo.java");
-        new AlertDialog.Builder(main)
-                .setTitle("Upload files")
-                .setMessage("Choose the repository path to upload to, then pick a file. "
-                        + "Text files are staged; binary files are saved locally only in version 1.")
+        pathInput.setText(suggested);
+        if (suggested.length() > 0) {
+            pathInput.setSelection(suggested.length());
+        }
+
+        AlertDialog dialog = new AlertDialog.Builder(main)
+                .setTitle("Upload to repository path")
+                .setMessage("Repository: " + main.selectedRepo().getFullName()
+                        + "   Branch: " + main.selectedRepo().getCurrentBranch()
+                        + "\n\nConfirm the path for the selected file. Text files are staged; "
+                        + "binary files are saved locally only in version 1. An existing file at "
+                        + "this path is replaced in the staging area.")
                 .setView(pathInput)
                 .setNegativeButton("Cancel", (d, w) -> d.dismiss())
-                .setPositiveButton("Pick file", (d, w) -> {
+                .setPositiveButton("Upload", null)
+                .create();
+        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
                     String target = pathInput.getText().toString().trim();
-                    if (target.isEmpty()) {
-                        main.toast("Enter a target path first.");
+                    String problem = UploadFlow.validateTargetPath(target);
+                    if (problem != null) {
+                        main.toast(problem);
                         return;
                     }
-                    main.pickFile(new MainActivity.PickerCallback() {
-                        @Override
-                        public void onPicked(android.net.Uri uri) {
-                            Result<File> imported = main.services().fileTransfer().importUri(uri, "upload.bin");
-                            if (!imported.ok) {
-                                main.toast(imported.display());
-                                return;
-                            }
-                            Result<String> read = main.services().fileTransfer().readText(imported.data);
-                            if (!read.ok) {
-                                main.toast(read.display() + " The file was saved locally but is not staged, "
-                                        + "because binary upload is not implemented in version 1.");
-                                return;
-                            }
-                            Result<String> staged = main.services().gitHub()
-                                    .stageFile(main.selectedRepo(), target, read.data);
-                            log("repo", "Upload staged " + target + " (" + staged.display() + ")", false);
-                            Confirmations.info(main, "Upload staged",
-                                    staged.display() + "\n\nSource: " + imported.data.getName()
-                                            + "\nCommit and push to publish it.");
-                        }
+                    dialog.dismiss();
+                    stageUpload(uri, target);
+                }));
+        dialog.show();
+    }
 
-                        @Override
-                        public void onCancelled() {
-                            main.toast("Upload cancelled. Nothing was changed.");
-                        }
-                    });
-                })
-                .show();
+    /**
+     * Imports the picked URI and stages it. The import writes to private storage, so
+     * it runs off the main thread like every other blocking file operation.
+     */
+    private void stageUpload(final android.net.Uri uri, final String target) {
+        TaskRunner.run(main, "Upload", "Importing file\u2026",
+                () -> {
+                    Result<File> imported = main.services().fileTransfer().importUri(uri, target);
+                    Result<String> read = imported.ok
+                            ? main.services().fileTransfer().readText(imported.data) : null;
+                    Result<String> staged = read != null && read.ok
+                            ? main.services().gitHub().stageFile(main.selectedRepo(), target, read.data)
+                            : null;
+                    return UploadFlow.from(target, imported, read, staged);
+                },
+                outcome -> {
+                    log("repo", "Upload " + target + " from " + outcome.sourceName
+                            + " (" + outcome.message + ")", outcome.ok());
+                    if (outcome.ok()) {
+                        Confirmations.info(main, outcome.demo ? "Upload staged [DEMO]" : "Upload staged",
+                                outcome.message + "\n\nSource: " + outcome.sourceName
+                                        + "\nCommit and push to publish it.");
+                    } else if (outcome.status == UploadFlow.Outcome.Status.BINARY_UNSUPPORTED) {
+                        Confirmations.info(main, "Not staged (binary)",
+                                outcome.message + "\n\nSource: " + outcome.sourceName);
+                    } else {
+                        Confirmations.info(main, "Upload failed", outcome.message);
+                    }
+                    main.refreshCurrent();
+                });
     }
 
     private void createBranch() {
