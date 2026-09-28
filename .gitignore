@@ -3,7 +3,9 @@
 local.properties
 .idea/
 .DS_Store
-build/
+# Gradle build output only; source packages named "build" must stay tracked.
+/build/
+/*/build/
 captures/
 .externalNativeBuild/
 .cxx/
