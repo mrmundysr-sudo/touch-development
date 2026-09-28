@@ -90,14 +90,14 @@ endpoint to switch to the live integrations.
 
 ## Verified build record
 
-`./gradlew --no-daemon clean assembleDebug testDebugUnitTest lintDebug`
+`./gradlew --no-daemon --no-build-cache clean assembleDebug testDebugUnitTest lintDebug`
 completed with `BUILD SUCCESSFUL` (see `docs/build-output/build-log.txt`).
 
 - Unit tests: 14 passed, 0 failed
-- Debug APK SHA-256: `e8ccb429c5fcf1f5ce3f471560d8817335c7059d92c5afbb2cd4c989589aa944`
-- Source ZIP: run `sha256sum docs/build-output/TouchDeveloper-touch-development-source-v001.zip`
-  to get its checksum. (The ZIP contains this README, so its own hash cannot be
-  printed inside it.)
+- Lint: 0 errors, 16 warnings
+- Debug APK SHA-256: `eb6ac401e01ad07d87bf3ea47d9d85023254abd911daa7c62d1d06721034eaab`
+- Source ZIP: see `docs/build-output/SHA256SUMS` for the checksum. (The ZIP
+  contains this README, so its own hash cannot be printed inside it.)
 
 The APK has been built and inspected (`aapt dump badging` confirms package
 `com.touchdeveloper.app`, minSdk 26, portrait). It has not been run on a physical

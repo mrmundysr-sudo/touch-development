@@ -1,70 +1,98 @@
+Touch Developer - handoff build log
+Generated (UTC): 2026-09-28T10:13:52Z
+Commit: 1d7a82aea3399555e8d2b611c3521445ff08ddd2 (branch touch-developer-v1-app)
+Command: ./gradlew --no-daemon --no-build-cache clean assembleDebug testDebugUnitTest lintDebug
+Note: --no-build-cache is used so compileDebugJavaWithJavac executes in this run.
+
+================================ Verification ================================
+Result:               BUILD SUCCESSFUL
+Compilation:          :app:compileDebugJavaWithJavac executed (no FROM-CACHE)
+Unit tests:           14 passed, 0 failed, 0 errors, 0 skipped
+Android lint:         0 errors, 16 warnings
+Debug APK path:       app/build/outputs/apk/debug/app-debug.apk
+Debug APK size:       96207 bytes
+Debug APK SHA-256:    eb6ac401e01ad07d87bf3ea47d9d85023254abd911daa7c62d1d06721034eaab
+APK package:          com.touchdeveloper.app
+APK minSdk/targetSdk: 26 / 34
+Launcher activity:    com.touchdeveloper.app.MainActivity
+
+Source package present: com.touchdeveloper.app.build (BuildRequest, BuildService,
+                        DemoBuildService, OpenHandsBuildService)
+gitignore:            build output anchored to /build/ and /*/build/ so the
+                        app/.../app/build/ source package stays tracked.
+
+========================== Full Gradle output ==============================
 To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.7/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
 Daemon will be stopped at the end of the build 
-> Task :app:clean UP-TO-DATE
+> Task :app:clean
 > Task :app:preBuild UP-TO-DATE
 > Task :app:preDebugBuild UP-TO-DATE
 > Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
-> Task :app:generateDebugBuildConfig FROM-CACHE
-> Task :app:javaPreCompileDebug FROM-CACHE
-> Task :app:generateDebugResValues FROM-CACHE
+> Task :app:generateDebugBuildConfig
+> Task :app:javaPreCompileDebug
+> Task :app:generateDebugResValues
 > Task :app:checkDebugAarMetadata
 > Task :app:mapDebugSourceSetPaths
-> Task :app:generateDebugResources FROM-CACHE
-> Task :app:mergeDebugResources FROM-CACHE
-> Task :app:packageDebugResources FROM-CACHE
-> Task :app:parseDebugLocalResources FROM-CACHE
+> Task :app:generateDebugResources
+> Task :app:packageDebugResources
 > Task :app:createDebugCompatibleScreenManifests
-> Task :app:extractDeepLinksDebug FROM-CACHE
-> Task :app:processDebugMainManifest FROM-CACHE
-> Task :app:processDebugManifest FROM-CACHE
-> Task :app:processDebugManifestForPackage FROM-CACHE
-> Task :app:processDebugResources FROM-CACHE
-> Task :app:compileDebugJavaWithJavac FROM-CACHE
+> Task :app:extractDeepLinksDebug
+> Task :app:mergeDebugResources
+> Task :app:parseDebugLocalResources
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
 > Task :app:mergeDebugShaders
 > Task :app:compileDebugShaders NO-SOURCE
 > Task :app:generateDebugAssets UP-TO-DATE
 > Task :app:mergeDebugAssets
-> Task :app:compressDebugAssets FROM-CACHE
-> Task :app:desugarDebugFileDependencies FROM-CACHE
-> Task :app:dexBuilderDebug
-> Task :app:mergeDebugGlobalSynthetics FROM-CACHE
+> Task :app:compressDebugAssets
+> Task :app:desugarDebugFileDependencies
+> Task :app:processDebugManifestForPackage
 > Task :app:processDebugJavaRes NO-SOURCE
 > Task :app:checkDebugDuplicateClasses
 > Task :app:mergeDebugStartupProfile UP-TO-DATE
-> Task :app:mergeExtDexDebug FROM-CACHE
-> Task :app:mergeLibDexDebug FROM-CACHE
+> Task :app:mergeExtDexDebug
+> Task :app:mergeLibDexDebug
+> Task :app:mergeDebugJavaResource
 > Task :app:mergeDebugJniLibFolders
 > Task :app:mergeDebugNativeLibs NO-SOURCE
 > Task :app:stripDebugDebugSymbols NO-SOURCE
-> Task :app:mergeDebugJavaResource
 > Task :app:validateSigningDebug
 > Task :app:writeDebugAppMetadata
 > Task :app:writeDebugSigningConfigVersions
 > Task :app:preDebugUnitTestBuild UP-TO-DATE
-> Task :app:javaPreCompileDebugUnitTest FROM-CACHE
 > Task :app:processDebugUnitTestJavaRes NO-SOURCE
 > Task :app:preDebugAndroidTestBuild SKIPPED
-> Task :app:generateDebugAndroidTestResValues FROM-CACHE
+> Task :app:javaPreCompileDebugUnitTest
+> Task :app:generateDebugAndroidTestResValues
+> Task :app:extractProguardFiles
+> Task :app:processDebugResources
+
+> Task :app:compileDebugJavaWithJavac
+Note: /workspace/project/touch-development/app/src/main/java/com/touchdeveloper/app/MainActivity.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :app:dexBuilderDebug
+> Task :app:mergeDebugGlobalSynthetics
+> Task :app:generateDebugLintReportModel
 > Task :app:bundleDebugClassesToRuntimeJar
 > Task :app:bundleDebugClassesToCompileJar
 > Task :app:mergeProjectDexDebug
-> Task :app:extractProguardFiles
-> Task :app:compileDebugUnitTestJavaWithJavac FROM-CACHE
+> Task :app:compileDebugUnitTestJavaWithJavac
 > Task :app:testDebugUnitTest
 > Task :app:generateDebugAndroidTestLintModel
-> Task :app:generateDebugLintReportModel
 > Task :app:generateDebugUnitTestLintModel
-> Task :app:lintAnalyzeDebug FROM-CACHE
-> Task :app:lintAnalyzeDebugAndroidTest FROM-CACHE
-> Task :app:lintAnalyzeDebugUnitTest FROM-CACHE
 > Task :app:packageDebug
 > Task :app:createDebugApkListingFileRedirect
 > Task :app:assembleDebug
+> Task :app:lintAnalyzeDebugAndroidTest
+> Task :app:lintAnalyzeDebugUnitTest
+> Task :app:lintAnalyzeDebug
 
 > Task :app:lintReportDebug
 Wrote HTML report to file:///workspace/project/touch-development/app/build/reports/lint-results-debug.html
 
 > Task :app:lintDebug
 
-BUILD SUCCESSFUL in 12s
-50 actionable tasks: 24 executed, 24 from cache, 2 up-to-date
+BUILD SUCCESSFUL in 20s
+50 actionable tasks: 49 executed, 1 up-to-date
