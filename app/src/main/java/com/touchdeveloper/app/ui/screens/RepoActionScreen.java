@@ -15,6 +15,7 @@ import com.touchdeveloper.app.model.CommitChange;
 import com.touchdeveloper.app.model.Repo;
 import com.touchdeveloper.app.safety.Confirmations;
 import com.touchdeveloper.app.ui.Screen;
+import com.touchdeveloper.app.ui.TaskRunner;
 import com.touchdeveloper.app.ui.Ui;
 import com.touchdeveloper.app.util.Result;
 
@@ -73,12 +74,15 @@ public class RepoActionScreen extends Screen {
     }
 
     private void pullLatest() {
-        Result<String> result = main.services().gitHub().pullLatest(main.selectedRepo());
-        log("repo", "Pull latest (" + result.display() + ")", false);
-        main.toast(result.display());
-        if (result.ok) {
-            rebuild();
-        }
+        TaskRunner.run(main, "GitHub", "Pulling latest changes\u2026",
+                () -> main.services().gitHub().pullLatest(main.selectedRepo()),
+                result -> {
+                    log("repo", "Pull latest (" + result.display() + ")", false);
+                    main.toast(result.display());
+                    if (result.ok) {
+                        rebuild();
+                    }
+                });
     }
 
     private void uploadFiles() {
@@ -146,12 +150,16 @@ public class RepoActionScreen extends Screen {
                             "Create branch " + name + " from " + main.selectedRepo().getCurrentBranch()
                                     + " in " + main.selectedRepo().getFullName() + "?",
                             () -> {
-                                Result<String> result = main.services().gitHub()
-                                        .createBranch(main.selectedRepo(), name);
-                                log("repo", "Create branch " + name + " (" + result.display() + ")", true);
-                                Confirmations.info(main, result.ok ? "Branch created" : "Branch not created",
-                                        result.display());
-                                rebuild();
+                                TaskRunner.run(main, "GitHub", "Creating branch\u2026",
+                                        () -> main.services().gitHub().createBranch(main.selectedRepo(), name),
+                                        result -> {
+                                            log("repo", "Create branch " + name + " (" + result.display()
+                                                    + ")", true);
+                                            Confirmations.info(main,
+                                                    result.ok ? "Branch created" : "Branch not created",
+                                                    result.display());
+                                            rebuild();
+                                        });
                             });
                 })
                 .show();
@@ -195,16 +203,19 @@ public class RepoActionScreen extends Screen {
         }
         Confirmations.confirmPublicPush(main, main.selectedRepo().getFullName(),
                 main.selectedRepo().getCurrentBranch(), lines, () -> {
-                    Result<String> result = main.services().gitHub()
-                            .pushStaged(main.selectedRepo(), "Touch Developer push");
-                    log("repo", "Push to GitHub (" + result.display() + ")", true);
-                    if (result.ok) {
-                        main.selectedRepo().setBuildStatus(
-                                com.touchdeveloper.app.model.StatusLabel.PUSHED);
-                    }
-                    Confirmations.info(main, result.ok ? "Push confirmed" : "Push not confirmed",
-                            result.display());
-                    rebuild();
+                    TaskRunner.run(main, "GitHub", "Pushing to GitHub\u2026",
+                            () -> main.services().gitHub()
+                                    .pushStaged(main.selectedRepo(), "Touch Developer push"),
+                            result -> {
+                                log("repo", "Push to GitHub (" + result.display() + ")", true);
+                                if (result.ok) {
+                                    main.selectedRepo().setBuildStatus(
+                                            com.touchdeveloper.app.model.StatusLabel.PUSHED);
+                                }
+                                Confirmations.info(main, result.ok ? "Push confirmed" : "Push not confirmed",
+                                        result.display());
+                                rebuild();
+                            });
                 });
     }
 
@@ -276,18 +287,22 @@ public class RepoActionScreen extends Screen {
 
     private void deleteRepository() {
         Repo repo = main.selectedRepo();
-        Confirmations.confirmRepositoryDeletion(main, repo.getFullName(), () -> {
-            Result<String> result = main.services().gitHub().deleteRepository(repo);
-            log("repo", "Delete repository " + repo.getFullName() + " (" + result.display() + ")", true);
-            Confirmations.info(main, result.ok ? "Repository deleted" : "Repository not deleted",
-                    result.display() + "\n\nProtected artifacts (latest APK, handoff ZIP, handoff "
-                            + "instructions) were not deleted.");
-            if (result.ok) {
-                main.repos().remove(repo);
-                main.setSelectedRepo(null);
-                main.replace(new RepositoryDashboardScreen(main));
-            }
-        });
+        Confirmations.confirmRepositoryDeletion(main, repo.getFullName(), () ->
+                TaskRunner.run(main, "GitHub", "Deleting repository\u2026",
+                        () -> main.services().gitHub().deleteRepository(repo),
+                        result -> {
+                            log("repo", "Delete repository " + repo.getFullName() + " (" + result.display()
+                                    + ")", true);
+                            Confirmations.info(main,
+                                    result.ok ? "Repository deleted" : "Repository not deleted",
+                                    result.display() + "\n\nProtected artifacts (latest APK, handoff ZIP, "
+                                            + "handoff instructions) were not deleted.");
+                            if (result.ok) {
+                                main.repos().remove(repo);
+                                main.setSelectedRepo(null);
+                                main.replace(new RepositoryDashboardScreen(main));
+                            }
+                        }));
     }
 
     private void rebuild() {

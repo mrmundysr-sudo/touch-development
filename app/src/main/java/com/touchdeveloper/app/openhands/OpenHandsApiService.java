@@ -54,8 +54,8 @@ public class OpenHandsApiService implements OpenHandsService {
                 + "\",\"branch\":\"" + Json.escape(request.getBranch()) + "\"}";
         Http.Response response = Http.post(endpoint + "/instructions", token, body);
         if (!response.ok()) {
-            return Result.failure("OpenHands rejected the request (HTTP " + response.code + "): "
-                    + safeMessage(response.body) + ". The endpoint contract is unverified.");
+            return Result.failure("OpenHands rejected the request (" + Http.statusText(response) + "): "
+                    + safeMessage(response) + ". The endpoint contract is unverified.");
         }
         return Result.success("OpenHands returned HTTP " + response.code
                 + ", which confirms it accepted the request. Build success is not implied.",
@@ -73,8 +73,8 @@ public class OpenHandsApiService implements OpenHandsService {
                 + "\",\"task\":\"assembleDebug\"}";
         Http.Response response = Http.post(endpoint + "/builds", token, body);
         if (!response.ok()) {
-            return Result.failure("OpenHands did not accept the build (HTTP " + response.code + "): "
-                    + safeMessage(response.body) + ". The endpoint contract is unverified.");
+            return Result.failure("OpenHands did not accept the build (" + Http.statusText(response) + "): "
+                    + safeMessage(response) + ". The endpoint contract is unverified.");
         }
         String reference = Http.stringField(response.body, "id");
         if (reference == null) {
@@ -97,15 +97,20 @@ public class OpenHandsApiService implements OpenHandsService {
         }
         Http.Response response = Http.get(endpoint + "/builds/" + jobReference, token);
         if (!response.ok()) {
-            return Result.failure("Could not read build status (HTTP " + response.code + "): "
-                    + safeMessage(response.body) + ". The endpoint contract is unverified.");
+            return Result.failure("Could not read build status (" + Http.statusText(response) + "): "
+                    + safeMessage(response) + ". The endpoint contract is unverified.");
         }
         String status = Http.stringField(response.body, "status");
         return Result.success("OpenHands status: " + (status == null ? "unknown" : status), response.body);
     }
 
-    private String safeMessage(String body) {
-        String message = Json.errorMessage(body);
+    private String safeMessage(Http.Response response) {
+        // A transport failure carries a human-readable reason, not a JSON error object.
+        if (response.transportError) {
+            return response.body == null || response.body.isEmpty()
+                    ? "the request could not reach the endpoint." : response.body;
+        }
+        String message = Json.errorMessage(response.body);
         return message == null ? "no message" : message;
     }
 }

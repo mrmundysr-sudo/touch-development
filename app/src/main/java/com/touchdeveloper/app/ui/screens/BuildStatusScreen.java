@@ -12,6 +12,7 @@ import com.touchdeveloper.app.MainActivity;
 import com.touchdeveloper.app.model.BuildRecord;
 import com.touchdeveloper.app.safety.Confirmations;
 import com.touchdeveloper.app.ui.Screen;
+import com.touchdeveloper.app.ui.TaskRunner;
 import com.touchdeveloper.app.ui.Ui;
 
 import java.io.File;
@@ -103,10 +104,13 @@ public class BuildStatusScreen extends Screen {
             }
             com.touchdeveloper.app.build.BuildRequest request = main.pendingRequest();
             request.setAiInstructions("Fix these Gradle errors:\n" + record.getErrorOutput());
-            com.touchdeveloper.app.util.Result<String> result = main.services().openHands()
-                    .sendInstructions(request);
-            log("build", "Send errors to OpenHands (" + result.display() + ")");
-            Confirmations.info(main, result.ok ? "Errors sent" : "Errors not sent", result.display());
+            TaskRunner.run(main, "OpenHands", "Sending errors\u2026",
+                    () -> main.services().openHands().sendInstructions(request),
+                    result -> {
+                        log("build", "Send errors to OpenHands (" + result.display() + ")");
+                        Confirmations.info(main, result.ok ? "Errors sent" : "Errors not sent",
+                                result.display());
+                    });
         });
 
         addButton(column, "Rebuild", v -> {

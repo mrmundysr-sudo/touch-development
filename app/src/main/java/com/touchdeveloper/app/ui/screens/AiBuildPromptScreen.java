@@ -14,6 +14,7 @@ import com.touchdeveloper.app.build.DemoBuildService;
 import com.touchdeveloper.app.model.BuildRecord;
 import com.touchdeveloper.app.safety.Confirmations;
 import com.touchdeveloper.app.ui.Screen;
+import com.touchdeveloper.app.ui.TaskRunner;
 import com.touchdeveloper.app.ui.Ui;
 import com.touchdeveloper.app.util.Result;
 
@@ -185,13 +186,19 @@ public class AiBuildPromptScreen extends Screen {
         request.setProjectName(main.selectedRepo().getName());
 
         if (main.services().build().isConfigured()) {
-            BuildRecord record = main.services().build().startBuild(request);
-            main.setBuildRecord(record);
-            main.selectedRepo().setBuildStatus(record.getStatus());
-            log("build", "Started build via configured service");
-            Confirmations.info(main, "Build requested", record.progressText()
-                    + "\n\nA build was requested. Success is only reported when the build service confirms it.");
-            main.show(new BuildStatusScreen(main));
+            // A configured build routes through OpenHands, so it must not run on
+            // the main thread.
+            TaskRunner.run(main, "Build", "Requesting build\u2026",
+                    () -> main.services().build().startBuild(request),
+                    record -> {
+                        main.setBuildRecord(record);
+                        main.selectedRepo().setBuildStatus(record.getStatus());
+                        log("build", "Started build via configured service");
+                        Confirmations.info(main, "Build requested", record.progressText()
+                                + "\n\nA build was requested. Success is only reported when the build "
+                                + "service confirms it.");
+                        main.show(new BuildStatusScreen(main));
+                    });
             return;
         }
 
@@ -229,10 +236,13 @@ public class AiBuildPromptScreen extends Screen {
 
     private void sendToOpenHands(BuildRequest request) {
         captureFields(request);
-        Result<String> result = main.services().openHands().sendInstructions(request);
-        log("prompt", "Send to OpenHands (" + result.display() + ")");
-        Confirmations.info(main, result.ok ? "Sent to OpenHands" : "Not sent to OpenHands",
-                result.display());
+        TaskRunner.run(main, "OpenHands", "Sending to OpenHands\u2026",
+                () -> main.services().openHands().sendInstructions(request),
+                result -> {
+                    log("prompt", "Send to OpenHands (" + result.display() + ")");
+                    Confirmations.info(main, result.ok ? "Sent to OpenHands" : "Not sent to OpenHands",
+                            result.display());
+                });
     }
 
     private void log(String category, String message) {

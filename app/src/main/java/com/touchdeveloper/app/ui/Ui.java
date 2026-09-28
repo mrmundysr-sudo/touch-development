@@ -101,6 +101,21 @@ public final class Ui {
         return view;
     }
 
+    /** Persistent error banner; red text on a light red panel. */
+    public static TextView error(Context context, String text) {
+        TextView view = new TextView(context);
+        view.setText(text);
+        view.setTextSize(13f);
+        view.setTextColor(Color.parseColor("#A02020"));
+        view.setBackgroundColor(Color.parseColor("#FBE9E9"));
+        view.setPadding(dp(context, 12), dp(context, 10), dp(context, 12), dp(context, 10));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.setMargins(dp(context, 12), dp(context, 6), dp(context, 12), dp(context, 6));
+        view.setLayoutParams(params);
+        return view;
+    }
+
     public static TextView divider(Context context, String text) {
         TextView view = new TextView(context);
         view.setText(text);

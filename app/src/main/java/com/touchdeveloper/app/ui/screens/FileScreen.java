@@ -17,6 +17,7 @@ import com.touchdeveloper.app.model.RepoFile;
 import com.touchdeveloper.app.safety.Confirmations;
 import com.touchdeveloper.app.safety.Protection;
 import com.touchdeveloper.app.ui.Screen;
+import com.touchdeveloper.app.ui.TaskRunner;
 import com.touchdeveloper.app.ui.Ui;
 import com.touchdeveloper.app.util.Result;
 
@@ -102,16 +103,18 @@ public class FileScreen extends Screen {
     }
 
     private void load() {
-        Result<List<RepoFile>> result = main.services().gitHub()
-                .listFiles(main.selectedRepo(), currentPath);
-        entries.clear();
-        if (result.data != null) {
-            entries.addAll(result.data);
-        }
-        if (!result.ok) {
-            main.toast(result.display());
-        }
-        rebuild();
+        TaskRunner.run(main, "GitHub", "Loading files\u2026",
+                () -> main.services().gitHub().listFiles(main.selectedRepo(), currentPath),
+                result -> {
+                    entries.clear();
+                    if (result.data != null) {
+                        entries.addAll(result.data);
+                    }
+                    if (!result.ok && !result.demo) {
+                        main.toast(result.display());
+                    }
+                    rebuild();
+                });
     }
 
     private void rebuild() {
@@ -230,22 +233,26 @@ public class FileScreen extends Screen {
         }
     }
 
-    private void doDownload(RepoFile file) {
-        Result<byte[]> result = main.services().gitHub().downloadFile(main.selectedRepo(), file);
-        log("file", "Download " + file.getPath() + " (" + result.display() + ")", false);
-        if (result.data == null) {
-            main.toast(result.display());
-            return;
-        }
-        Result<File> saved = main.services().fileTransfer()
-                .writeExportBytes(shortName(file.getPath()), result.data);
-        if (!saved.ok) {
-            main.toast(saved.display());
-            return;
-        }
-        Confirmations.info(main, "Download complete",
-                "Saved to app storage:\n" + saved.data.getAbsolutePath()
-                        + "\n\nThis is a local copy. Pushing it to GitHub is a separate, confirmed step.");
+    private void doDownload(final RepoFile file) {
+        TaskRunner.run(main, "GitHub", "Downloading\u2026",
+                () -> main.services().gitHub().downloadFile(main.selectedRepo(), file),
+                result -> {
+                    log("file", "Download " + file.getPath() + " (" + result.display() + ")", false);
+                    if (result.data == null) {
+                        main.toast(result.display());
+                        return;
+                    }
+                    Result<File> saved = main.services().fileTransfer()
+                            .writeExportBytes(shortName(file.getPath()), result.data);
+                    if (!saved.ok) {
+                        main.toast(saved.display());
+                        return;
+                    }
+                    Confirmations.info(main, "Download complete",
+                            "Saved to app storage:\n" + saved.data.getAbsolutePath()
+                                    + "\n\nThis is a local copy. Pushing it to GitHub is a separate, "
+                                    + "confirmed step.");
+                });
     }
 
     private void doDownloadZip(RepoFile file) {
@@ -254,35 +261,44 @@ public class FileScreen extends Screen {
         log("file", "Download ZIP requested for " + file.getPath() + " (" + COMING_SOON + ")", false);
     }
 
-    private void doPreview(RepoFile file) {
-        Result<String> result = main.services().gitHub().readFile(main.selectedRepo(), file);
-        log("file", "Preview " + file.getPath() + " (" + result.display() + ")", false);
-        if (result.data == null) {
-            main.toast(result.display());
-            return;
-        }
-        String body = result.demo ? "[DEMO] preview data\n\n" + result.data : result.data;
-        new AlertDialog.Builder(main)
-                .setTitle("Preview: " + file.displayName())
-                .setMessage(body.length() > 4000 ? body.substring(0, 4000) + "\n... [truncated]" : body)
-                .setPositiveButton("Close", (d, w) -> d.dismiss())
-                .show();
+    private void doPreview(final RepoFile file) {
+        TaskRunner.run(main, "GitHub", "Loading preview\u2026",
+                () -> main.services().gitHub().readFile(main.selectedRepo(), file),
+                result -> {
+                    log("file", "Preview " + file.getPath() + " (" + result.display() + ")", false);
+                    if (result.data == null) {
+                        main.toast(result.display());
+                        return;
+                    }
+                    String body = result.demo ? "[DEMO] preview data\n\n" + result.data : result.data;
+                    new AlertDialog.Builder(main)
+                            .setTitle("Preview: " + file.displayName())
+                            .setMessage(body.length() > 4000
+                                    ? body.substring(0, 4000) + "\n... [truncated]" : body)
+                            .setPositiveButton("Close", (d, w) -> d.dismiss())
+                            .show();
+                });
     }
 
-    private void doCopy(RepoFile file) {
-        Result<String> result = main.services().gitHub().readFile(main.selectedRepo(), file);
-        String content = result.data;
-        if (content == null) {
-            content = file.getPath();
-        }
-        ClipboardManager clipboard = (ClipboardManager) main.getSystemService(Context.CLIPBOARD_SERVICE);
-        if (clipboard == null) {
-            main.toast("Clipboard is unavailable on this device.");
-            return;
-        }
-        clipboard.setPrimaryClip(ClipData.newPlainText("TouchDeveloper", content));
-        log("file", "Copied " + file.getPath() + " to clipboard (" + result.display() + ")", false);
-        main.toast("Copied to clipboard.");
+    private void doCopy(final RepoFile file) {
+        TaskRunner.run(main, "GitHub", "Fetching file\u2026",
+                () -> main.services().gitHub().readFile(main.selectedRepo(), file),
+                result -> {
+                    String content = result.data;
+                    if (content == null) {
+                        content = file.getPath();
+                    }
+                    ClipboardManager clipboard =
+                            (ClipboardManager) main.getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (clipboard == null) {
+                        main.toast("Clipboard is unavailable on this device.");
+                        return;
+                    }
+                    clipboard.setPrimaryClip(ClipData.newPlainText("TouchDeveloper", content));
+                    log("file", "Copied " + file.getPath() + " to clipboard (" + result.display() + ")",
+                            false);
+                    main.toast("Copied to clipboard.");
+                });
     }
 
     private void doPasteReplace(RepoFile file) {

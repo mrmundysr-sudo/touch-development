@@ -65,8 +65,8 @@ public class GitHubApiService implements GitHubService {
     public Result<List<Repo>> listRepositories() {
         Http.Response response = Http.get(API + "/user/repos?per_page=50&sort=updated&affiliation=owner,collaborator", token);
         if (!response.ok()) {
-            return Result.failure("GitHub could not list repositories (HTTP " + response.code + "): "
-                    + describeError(response.body));
+            return Result.failure("GitHub could not list repositories (" + Http.statusText(response) + "): "
+                    + describeError(response));
         }
         List<Repo> repos = new ArrayList<>();
         for (String object : Json.objects(response.body)) {
@@ -100,8 +100,8 @@ public class GitHubApiService implements GitHubService {
         Http.Response response = Http.get(API + "/repos/" + repo.getOwner() + "/" + repo.getName()
                 + "/branches?per_page=100", token);
         if (!response.ok()) {
-            return Result.failure("Could not list branches (HTTP " + response.code + "): "
-                    + describeError(response.body));
+            return Result.failure("Could not list branches (" + Http.statusText(response) + "): "
+                    + describeError(response));
         }
         List<String> branches = new ArrayList<>();
         for (String object : Json.objects(response.body)) {
@@ -117,8 +117,8 @@ public class GitHubApiService implements GitHubService {
     public Result<Repo> refresh(Repo repo) {
         Http.Response mavenResponse = Http.get(API + "/repos/" + repo.getOwner() + "/" + repo.getName(), token);
         if (!mavenResponse.ok()) {
-            return Result.failure("Could not refresh repository (HTTP " + mavenResponse.code + "): "
-                    + describeError(mavenResponse.body));
+            return Result.failure("Could not refresh repository (" + Http.statusText(mavenResponse) + "): "
+                    + describeError(mavenResponse));
         }
         String defaultBranch = Http.stringField(mavenResponse.body, "default_branch");
         if (defaultBranch != null) {
@@ -151,7 +151,7 @@ public class GitHubApiService implements GitHubService {
         Http.Response commits = Http.get(API + "/repos/" + repo.getOwner() + "/" + repo.getName()
                 + "/commits/" + encode(repo.getCurrentBranch()) + "?per_page=1", token);
         if (!commits.ok()) {
-            return Result.failure("Pull failed (HTTP " + commits.code + "): " + describeError(commits.body));
+            return Result.failure("Pull failed (" + Http.statusText(commits) + "): " + describeError(commits));
         }
         refreshCommit(repo);
         return Result.success("Pulled latest commit " + repo.shortCommit() + " on "
@@ -164,8 +164,8 @@ public class GitHubApiService implements GitHubService {
                 + "ref=" + encode(repo.getCurrentBranch());
         Http.Response response = Http.get(url, token);
         if (!response.ok()) {
-            return Result.failure("Could not list files (HTTP " + response.code + "): "
-                    + describeError(response.body));
+            return Result.failure("Could not list files (" + Http.statusText(response) + "): "
+                    + describeError(response));
         }
         List<RepoFile> files = new ArrayList<>();
         for (String object : Json.objects(response.body)) {
@@ -204,8 +204,8 @@ public class GitHubApiService implements GitHubService {
         Http.Response response = Http.get(contentsUrl(repo, file.getPath())
                 + "?ref=" + encode(repo.getCurrentBranch()), token);
         if (!response.ok()) {
-            return Result.failure("Could not download file (HTTP " + response.code + "): "
-                    + describeError(response.body));
+            return Result.failure("Could not download file (" + Http.statusText(response) + "): "
+                    + describeError(response));
         }
         String encoded = Http.stringField(response.body, "content");
         if (encoded == null) {
@@ -294,7 +294,7 @@ public class GitHubApiService implements GitHubService {
             if (response.ok()) {
                 succeeded++;
             } else {
-                problems.add(path + " (HTTP " + response.code + ": " + describeError(response.body) + ")");
+                problems.add(path + " (" + Http.statusText(response) + ": " + describeError(response) + ")");
             }
         }
 
@@ -311,7 +311,7 @@ public class GitHubApiService implements GitHubService {
             if (response.ok()) {
                 succeeded++;
             } else {
-                problems.add(path + " (HTTP " + response.code + ": " + describeError(response.body) + ")");
+                problems.add(path + " (" + Http.statusText(response) + ": " + describeError(response) + ")");
             }
         }
 
@@ -344,8 +344,8 @@ public class GitHubApiService implements GitHubService {
         Http.Response ref = Http.get(API + "/repos/" + repo.getOwner() + "/" + repo.getName()
                 + "/git/ref/heads/" + encode(repo.getCurrentBranch()), token);
         if (!ref.ok()) {
-            return Result.failure("Could not read the current branch reference (HTTP " + ref.code
-                    + "): " + describeError(ref.body));
+            return Result.failure("Could not read the current branch reference (" + Http.statusText(ref)
+                    + "): " + describeError(ref));
         }
         String sha = Http.stringField(ref.body, "sha");
         if (sha == null) {
@@ -355,8 +355,8 @@ public class GitHubApiService implements GitHubService {
         Http.Response response = Http.post(API + "/repos/" + repo.getOwner() + "/" + repo.getName()
                 + "/git/refs", token, body);
         if (!response.ok()) {
-            return Result.failure("Branch creation failed (HTTP " + response.code + "): "
-                    + describeError(response.body));
+            return Result.failure("Branch creation failed (" + Http.statusText(response) + "): "
+                    + describeError(response));
         }
         repo.addBranch(newBranch);
         return Result.success("GitHub confirmed branch " + newBranch + " at " + sha.substring(0, 7) + ".",
@@ -368,14 +368,20 @@ public class GitHubApiService implements GitHubService {
         Http.Response response = Http.delete(API + "/repos/" + repo.getOwner() + "/" + repo.getName(),
                 token, null);
         if (!response.ok()) {
-            return Result.failure("Repository deletion failed (HTTP " + response.code + "): "
-                    + describeError(response.body));
+            return Result.failure("Repository deletion failed (" + Http.statusText(response) + "): "
+                    + describeError(response));
         }
         return Result.success("GitHub confirmed deletion of " + repo.getFullName() + ".", repo.getFullName());
     }
 
-    private String describeError(String body) {
-        String message = Json.errorMessage(body);
+    private String describeError(Http.Response response) {
+        // A transport failure carries a human-readable reason (host, timeout, TLS),
+        // not a JSON error object. Do not replace it with "no message".
+        if (response.transportError) {
+            return response.body == null || response.body.isEmpty()
+                    ? "the request could not reach GitHub." : response.body;
+        }
+        String message = Json.errorMessage(response.body);
         return message == null ? "no message" : message;
     }
 }

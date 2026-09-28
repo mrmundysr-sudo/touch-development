@@ -10,6 +10,7 @@ import android.widget.TextView;
 import com.touchdeveloper.app.MainActivity;
 import com.touchdeveloper.app.model.Repo;
 import com.touchdeveloper.app.ui.Screen;
+import com.touchdeveloper.app.ui.TaskRunner;
 import com.touchdeveloper.app.ui.Ui;
 import com.touchdeveloper.app.util.Result;
 
@@ -41,6 +42,12 @@ public class RepositoryDashboardScreen extends Screen {
                     + "Until then, demo repositories below are labelled [DEMO]."));
         }
 
+        // A failed load leaves a persistent banner instead of a toast that can be
+        // missed or overwritten while the screen reloads.
+        if (!main.lastError().isEmpty()) {
+            column.addView(Ui.error(main, main.lastError()));
+        }
+
         Button refresh = Ui.button(main, "Refresh repositories");
         refresh.setOnClickListener(v -> loadRepositories(true));
         column.addView(refresh);
@@ -51,21 +58,46 @@ public class RepositoryDashboardScreen extends Screen {
 
     @Override
     public void onShown() {
-        if (main.repos().isEmpty()) {
+        // Auto-load once. Do not retry after a failure, or a dead network would
+        // loop request after request while the user just watches progress dialogs.
+        if (main.repos().isEmpty() && main.lastError().isEmpty()) {
             loadRepositories(false);
         }
     }
 
-    private void loadRepositories(boolean userInitiated) {
-        Result<List<Repo>> result = main.services().gitHub().listRepositories();
+    private void loadRepositories(final boolean userInitiated) {
+        TaskRunner.run(main, "GitHub", "Loading repositories\u2026",
+                () -> main.services().gitHub().listRepositories(),
+                result -> applyResult(result, userInitiated));
+    }
+
+    private void applyResult(Result<List<Repo>> result, boolean userInitiated) {
         main.services().activityLog().record("dashboard", "Refresh repositories (" + result.display() + ")",
                 userInitiated);
         if (result.data != null) {
             main.repos().clear();
             main.repos().addAll(result.data);
         }
-        if (!result.ok) {
-            main.toast(result.display());
+        if (result.ok || result.demo) {
+            // Demo data is clearly labelled and is not an error.
+            main.setLastError("");
+        } else {
+            // A real failure: keep the current list, never silently swap in demo
+            // data, and show the reason so the user can act on it.
+            if (main.services().gitHub().isConfigured()) {
+                // Stale [DEMO] rows from an earlier unconfigured session are not real
+                // GitHub repositories; drop them so they are not mistaken for a
+                // successful live list.
+                for (int i = main.repos().size() - 1; i >= 0; i--) {
+                    if (main.repos().get(i).isDemo()) {
+                        main.repos().remove(i);
+                    }
+                }
+            }
+            main.setLastError(result.display());
+            if (userInitiated) {
+                main.toast(result.display());
+            }
         }
         replaceSelf();
     }

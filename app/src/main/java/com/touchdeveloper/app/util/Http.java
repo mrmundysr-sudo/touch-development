@@ -21,10 +21,17 @@ public final class Http {
     public static class Response {
         public final int code;
         public final String body;
+        /** True when the request never reached the server (DNS, connect, TLS, or timeout). */
+        public final boolean transportError;
 
         Response(int code, String body) {
+            this(code, body, code == -1);
+        }
+
+        Response(int code, String body, boolean transportError) {
             this.code = code;
             this.body = body;
+            this.transportError = transportError;
         }
 
         public boolean ok() {
@@ -32,17 +39,32 @@ public final class Http {
         }
     }
 
+    /**
+     * A clear status description for an error: {@code "connection failed"} when the
+     * request never reached the server, otherwise {@code "HTTP <code>"}. Avoids the
+     * confusing "HTTP -1" for transport failures.
+     */
+    public static String statusText(Response response) {
+        return response.transportError ? "connection failed" : "HTTP " + response.code;
+    }
+
     private Http() {
     }
 
     public static Response request(String method, String url, String token, String body,
                                    String contentType) {
+        return request(method, url, token, body, contentType, 15000, 30000);
+    }
+
+    /** Variant with explicit timeouts, used so tests can exercise the timeout path quickly. */
+    public static Response request(String method, String url, String token, String body,
+                                   String contentType, int connectTimeoutMs, int readTimeoutMs) {
         HttpURLConnection conn = null;
         try {
             conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setRequestMethod(method);
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(30000);
+            conn.setConnectTimeout(connectTimeoutMs);
+            conn.setReadTimeout(readTimeoutMs);
             conn.setRequestProperty("Accept", "application/vnd.github+json");
             conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
             conn.setRequestProperty("User-Agent", "TouchDeveloper/1.0");
@@ -59,16 +81,52 @@ public final class Http {
                 }
             }
             int code = conn.getResponseCode();
-            InputStream stream = code >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            InputStream stream = code >= 400 ? conn.getErrorStream() : null;
+            if (stream == null) {
+                stream = conn.getInputStream();
+            }
             String responseBody = readFully(stream);
             return new Response(code, responseBody);
         } catch (Exception e) {
-            return new Response(-1, "Network error: " + e.getMessage());
+            // A transport failure has code -1. The body carries a human-readable reason
+            // (unknown host, connection refused/timed out, TLS failure) so the UI can
+            // explain what actually went wrong instead of showing an opaque status.
+            return new Response(-1, transportMessage(e), true);
         } finally {
             if (conn != null) {
                 conn.disconnect();
             }
         }
+    }
+
+    /** Turns a transport exception into a clear, actionable reason for the user. */
+    public static String transportMessage(Exception e) {
+        String cause = e == null ? "" : e.getClass().getSimpleName();
+        String detail = e == null || e.getMessage() == null ? cause : e.getMessage();
+        String lower = detail.toLowerCase(java.util.Locale.US);
+        String reason;
+        if (lower.contains("timed out") || lower.contains("timeout")) {
+            reason = "The connection timed out. Check your network and try again.";
+        } else if (lower.contains("unable to resolve host") || lower.contains("unknownhost")
+                || lower.contains("nodename nor servname")) {
+            reason = "The server name could not be resolved. Check your internet connection or DNS.";
+        } else if (lower.contains("econnrefused") || lower.contains("connection refused")) {
+            reason = "The server refused the connection.";
+        } else if (lower.contains("network is unreachable") || lower.contains("no route to host")) {
+            reason = "The network is unreachable. Check your Wi-Fi or mobile data.";
+        } else if (lower.contains("ssl") || lower.contains("certificate") || lower.contains("tls")) {
+            reason = "A secure connection could not be established (TLS/certificate error).";
+        } else if (cause.contains("SocketTimeout")) {
+            reason = "The connection timed out. Check your network and try again.";
+        } else if (cause.contains("UnknownHost")) {
+            reason = "The server name could not be resolved. Check your internet connection or DNS.";
+        } else if (cause.contains("Connect")) {
+            reason = "Could not connect to the server. Check your network and try again.";
+        } else {
+            reason = "The request could not reach the server.";
+        }
+        return reason + (detail.isEmpty() || lower.startsWith(reason.toLowerCase(java.util.Locale.US))
+                ? "" : " (" + detail + ")");
     }
 
     public static Response get(String url, String token) {

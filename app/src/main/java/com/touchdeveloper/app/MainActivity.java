@@ -50,6 +50,7 @@ public class MainActivity extends Activity {
     private HandoffResult lastHandoff;
     private boolean lastBuildForcedFailure;
     private String lastBuildLog = "";
+    private String lastError = "";
 
     private FrameLayout root;
     private LinearLayout header;
@@ -198,6 +199,15 @@ public class MainActivity extends Activity {
 
     public void setLastBuildLog(String log) {
         this.lastBuildLog = log;
+    }
+
+    /** Last error text to show on the dashboard, or "" when there is none. */
+    public String lastError() {
+        return lastError;
+    }
+
+    public void setLastError(String error) {
+        this.lastError = error == null ? "" : error;
     }
 
     // ---- navigation ---------------------------------------------------------
