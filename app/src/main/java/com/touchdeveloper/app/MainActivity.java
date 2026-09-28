@@ -225,6 +225,27 @@ public class MainActivity extends Activity {
     }
 
     private void display(Screen screen) {
+        render(screen);
+        screen.onShown();
+    }
+
+    /**
+     * Re-renders the current screen in place without calling {@code onShown()}.
+     * Used to show an updated screen after an asynchronous result, so a screen that
+     * loads data in {@code onShown()} cannot start another load from its own refresh.
+     */
+    public void refreshCurrent() {
+        if (current != null) {
+            render(current);
+        }
+    }
+
+    /** The screen currently displayed, used to drop results from a screen left behind. */
+    public Screen currentScreen() {
+        return current;
+    }
+
+    private void render(Screen screen) {
         current = screen;
         headerTitle.setText(screen.title());
         View content = screen.create();
@@ -232,7 +253,6 @@ public class MainActivity extends Activity {
         scroll.addView(content);
         root.removeAllViews();
         root.addView(scroll);
-        screen.onShown();
     }
 
     public void goBack() {

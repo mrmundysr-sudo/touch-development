@@ -23,6 +23,8 @@ import java.util.List;
  */
 public class RepositoryDashboardScreen extends Screen {
 
+    private boolean autoLoadAttempted;
+
     public RepositoryDashboardScreen(MainActivity main) {
         super(main);
     }
@@ -58,10 +60,14 @@ public class RepositoryDashboardScreen extends Screen {
 
     @Override
     public void onShown() {
-        // Auto-load once. Do not retry after a failure, or a dead network would
-        // loop request after request while the user just watches progress dialogs.
-        if (main.repos().isEmpty() && main.lastError().isEmpty()) {
-            loadRepositories(false);
+        // Load at most once for the lifetime of this screen instance. The screen is
+        // never replaced from inside a load (see applyResult), so this cannot loop,
+        // and a completed load, successful or not, is never retried on its own.
+        if (!autoLoadAttempted) {
+            autoLoadAttempted = true;
+            if (main.repos().isEmpty()) {
+                loadRepositories(false);
+            }
         }
     }
 
@@ -99,12 +105,12 @@ public class RepositoryDashboardScreen extends Screen {
                 main.toast(result.display());
             }
         }
-        replaceSelf();
-    }
-
-    private void replaceSelf() {
-        // Rebuild the dashboard in place so the refreshed list is visible.
-        main.replace(new RepositoryDashboardScreen(main));
+        // Re-render in place. Replacing the screen here would call onShown() again
+        // and, when the list stays empty, start the load over in a loop. If the user
+        // navigated away, update shared state only and leave their screen alone.
+        if (main.currentScreen() == this) {
+            main.refreshCurrent();
+        }
     }
 
     private void renderRepos(LinearLayout column) {

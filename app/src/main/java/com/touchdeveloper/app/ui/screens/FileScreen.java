@@ -16,18 +16,23 @@ import com.touchdeveloper.app.MainActivity;
 import com.touchdeveloper.app.model.RepoFile;
 import com.touchdeveloper.app.safety.Confirmations;
 import com.touchdeveloper.app.safety.Protection;
+import com.touchdeveloper.app.ui.FileListController;
 import com.touchdeveloper.app.ui.Screen;
 import com.touchdeveloper.app.ui.TaskRunner;
 import com.touchdeveloper.app.ui.Ui;
 import com.touchdeveloper.app.util.Result;
 
 import java.io.File;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Repository File Screen: lists the selected repository's files and folders and
  * opens a file action menu for each entry.
+ *
+ * The screen owns one {@link FileListController}, so a single automatic load runs
+ * on first show and every later load is user-initiated. The list is rendered once
+ * per load; the screen is never rebuilt from inside a load, which is what previously
+ * caused an endless reload loop.
  *
  * Destructive actions are confirmed, protected artifacts are guarded, and actions
  * that version 1 does not implement report "Coming in next version" instead of
@@ -38,7 +43,7 @@ public class FileScreen extends Screen {
     private static final String COMING_SOON = "Coming in next version";
 
     private String currentPath = "";
-    private final List<RepoFile> entries = new ArrayList<>();
+    private final FileListController controller = new FileListController();
 
     public FileScreen(MainActivity main) {
         super(main);
@@ -88,37 +93,59 @@ public class FileScreen extends Screen {
         column.addView(Ui.body(main, "Path: /" + currentPath));
 
         column.addView(Ui.sectionLabel(main, "Files and folders"));
-        if (entries.isEmpty()) {
-            column.addView(Ui.body(main, "No entries loaded. Tap Refresh, or the repository may be empty."));
-        }
-        for (RepoFile entry : entries) {
-            column.addView(fileRow(entry));
-        }
+        renderEntries(column);
         return column;
     }
 
     @Override
     public void onShown() {
-        load();
+        // One automatic load per screen instance. A completed load, successful or
+        // not, is never retried automatically.
+        if (main.selectedRepo() != null && controller.shouldAutoLoad()) {
+            load();
+        }
     }
 
     private void load() {
+        if (!controller.beginRequest()) {
+            return;
+        }
         TaskRunner.run(main, "GitHub", "Loading files\u2026",
                 () -> main.services().gitHub().listFiles(main.selectedRepo(), currentPath),
                 result -> {
-                    entries.clear();
-                    if (result.data != null) {
-                        entries.addAll(result.data);
+                    controller.onResult(result);
+                    // Re-render in place; do not replace the screen, or onShown()
+                    // would start another load and the screen would never settle.
+                    // If the user navigated away, drop the result instead of
+                    // painting it over the screen they moved to.
+                    if (main.currentScreen() == this) {
+                        main.refreshCurrent();
                     }
-                    if (!result.ok && !result.demo) {
-                        main.toast(result.display());
-                    }
-                    rebuild();
                 });
     }
 
-    private void rebuild() {
-        main.replace(new FileScreen(main));
+    /**
+     * Renders the current state. An empty, successfully loaded list is reported as
+     * an empty folder; a failure is reported once and Refresh stays available.
+     */
+    private void renderEntries(LinearLayout column) {
+        List<RepoFile> entries = controller.entries();
+        if (!entries.isEmpty()) {
+            for (RepoFile entry : entries) {
+                column.addView(fileRow(entry));
+            }
+            return;
+        }
+        if (controller.isLoading()) {
+            column.addView(Ui.body(main, "Loading files\u2026"));
+        } else if (!controller.error().isEmpty()) {
+            column.addView(Ui.error(main, controller.error()));
+            column.addView(Ui.body(main, "Tap Refresh to try again."));
+        } else if (controller.isLoaded()) {
+            column.addView(Ui.body(main, "This folder is empty."));
+        } else {
+            column.addView(Ui.body(main, "Loading files\u2026"));
+        }
     }
 
     private View fileRow(RepoFile file) {
@@ -212,13 +239,13 @@ public class FileScreen extends Screen {
                 file.setIncludedInBuild(true);
                 log("file", "Added " + file.getPath() + " to build", false);
                 main.toast(file.getPath() + " will be included in the build.");
-                rebuild();
+                main.refreshCurrent();
                 break;
             case "Exclude from build":
                 file.setIncludedInBuild(false);
                 log("file", "Excluded " + file.getPath() + " from build", false);
                 main.toast(file.getPath() + " will be excluded from the build.");
-                rebuild();
+                main.refreshCurrent();
                 break;
             case "Compare versions":
             case "Restore previous version":
@@ -324,7 +351,7 @@ public class FileScreen extends Screen {
                     Confirmations.info(main, "Staged locally",
                             staged.display() + "\n\nNothing has been sent to GitHub. Run Commit changes, "
                                     + "then Push to GitHub, to publish it.");
-                    rebuild();
+                    main.refreshCurrent();
                 }));
         dialog.show();
     }
@@ -358,7 +385,7 @@ public class FileScreen extends Screen {
                     log("file", "Staged rename " + file.getPath() + " -> " + newPath, false);
                     dialog.dismiss();
                     Confirmations.info(main, "Rename staged", result.display());
-                    rebuild();
+                    main.refreshCurrent();
                 }));
         dialog.show();
     }
@@ -378,7 +405,7 @@ public class FileScreen extends Screen {
                     Result<String> result = main.services().gitHub().stageDelete(main.selectedRepo(), file);
                     log("file", "Staged delete of " + file.getPath() + " (" + result.display() + ")", true);
                     Confirmations.info(main, "Deletion staged", result.display());
-                    rebuild();
+                    main.refreshCurrent();
                 });
     }
 
@@ -404,7 +431,7 @@ public class FileScreen extends Screen {
                 Confirmations.info(main, "Replacement staged", staged.display()
                         + "\n\nSource: " + imported.data.getName()
                         + "\nNothing has been sent to GitHub yet.");
-                rebuild();
+                main.refreshCurrent();
             }
 
             @Override
