@@ -24,3 +24,11 @@ Individual repositories
 - app-specific assets
 - app-specific specifications
 - a pointer back to this master repository
+
+## Touch Developer app (version 1)
+
+The root of this repository now contains the buildable Touch Developer V1 Android
+app (`com.touchdeveloper.app`), built from the verified `TouchDeveloper-V1-HANDOFF.zip`
+specification. See `docs/README-APP.md` for setup and run instructions, and the
+other files in `docs/` for the implemented/placeholder feature lists, required
+credentials, known limitations, testing steps, and the build log.
