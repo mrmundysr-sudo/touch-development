@@ -2,6 +2,13 @@
 # Called from each app repository (see templates/autobuild-caller.yml).
 # Builds, validates and uploads a debug APK artifact. It never creates releases,
 # never pushes, and needs no secrets.
+#
+# Failure handling: every failed run is classified so callers (and Claude) can tell
+# code problems from GitHub/infrastructure problems:
+#   failure_class = none | code | infrastructure
+#   manual_intervention = true when only a person can fix it (e.g. artifact storage quota)
+# Infrastructure-looking build failures (network timeouts, 5xx/429 from repositories,
+# disk full) are retried once automatically before being reported.
 name: Touch AutoBuild (reusable)
 
 on:
@@ -30,10 +37,21 @@ on:
         description: APK path relative to project_dir
         type: string
         default: "app/build/outputs/apk/debug/app-debug.apk"
+      sdk_packages:
+        description: Extra Android SDK packages to install, space separated (e.g. "platforms;android-35 cmake;3.22.1")
+        type: string
+        default: ""
       retention_days:
         description: Development artifacts expire after 3 days unless a caller overrides
         type: number
         default: 3
+    outputs:
+      failure_class:
+        description: none | code | infrastructure
+        value: ${{ jobs.build.outputs.failure_class }}
+      manual_intervention:
+        description: "true when a person must act"
+        value: ${{ jobs.build.outputs.manual_intervention }}
 
 permissions:
   contents: read
@@ -42,6 +60,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      failure_class: ${{ steps.classify.outputs.failure_class }}
+      manual_intervention: ${{ steps.classify.outputs.manual_intervention }}
     defaults:
       run:
         working-directory: ${{ inputs.project_dir }}
@@ -62,18 +83,43 @@ jobs:
         with:
           gradle-version: ${{ inputs.gradle_version }}
 
-      - name: Build
+      - name: Install extra Android SDK packages
+        if: ${{ inputs.sdk_packages != '' }}
+        env:
+          SDK_PACKAGES: ${{ inputs.sdk_packages }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ -f gradlew ]; then
-            chmod +x gradlew
-            ./gradlew --no-daemon ${{ inputs.tasks }}
-          else
-            gradle --no-daemon ${{ inputs.tasks }}
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          # shellcheck disable=SC2086
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" $SDK_PACKAGES
+
+      - name: Build
+        id: build
+        env:
+          TASKS: ${{ inputs.tasks }}
+        shell: bash
+        run: |
+          set +e
+          LOG="$RUNNER_TEMP/build.log"
+          INFRA_RE='Read timed out|Connection reset|Connection refused|connect timed out|Received status code (429|5[0-9][0-9])|Server returned HTTP response code: 5|Premature end of Content-Length|UnknownHostException|SSLHandshakeException|No space left on device|Could not install Gradle distribution'
+          run_build() {
+            if [ -f gradlew ]; then chmod +x gradlew; ./gradlew --no-daemon $TASKS; else gradle --no-daemon $TASKS; fi
+          }
+          run_build 2>&1 | tee "$LOG"; rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ] && grep -Eq "$INFRA_RE" "$LOG"; then
+            echo "::warning::Build failed with an infrastructure-looking error; retrying once in 30s"
+            echo "retried=true" >> "$GITHUB_OUTPUT"
+            sleep 30
+            run_build 2>&1 | tee "$LOG"; rc=${PIPESTATUS[0]}
           fi
+          if [ "$rc" -ne 0 ] && grep -Eq "$INFRA_RE" "$LOG"; then
+            echo "infra_error=true" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$rc"
 
       - name: Validate APK package and signing
+        id: validate
         shell: bash
         run: |
           set -euo pipefail
@@ -93,9 +139,71 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload APK artifact
+        id: upload
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ inputs.project_dir }}/${{ inputs.apk_path }}
           if-no-files-found: error
           retention-days: ${{ inputs.retention_days }}
+
+      - name: Pause before upload retry
+        if: ${{ steps.upload.outcome == 'failure' }}
+        run: sleep 20
+
+      - name: Upload APK artifact (retry once)
+        id: upload_retry
+        if: ${{ steps.upload.outcome == 'failure' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.project_dir }}/${{ inputs.apk_path }}
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}
+          overwrite: true
+
+      - name: Classify result
+        id: classify
+        if: ${{ always() }}
+        env:
+          BUILD: ${{ steps.build.outcome }}
+          INFRA_ERR: ${{ steps.build.outputs.infra_error }}
+          VALIDATE: ${{ steps.validate.outcome }}
+          UPLOAD: ${{ steps.upload.outcome }}
+          UPLOAD_RETRY: ${{ steps.upload_retry.outcome }}
+        shell: bash
+        run: |
+          class=none; manual=false; reason="build, validation and upload succeeded"
+          if [ "$BUILD" = failure ]; then
+            if [ "$INFRA_ERR" = true ]; then
+              class=infrastructure; manual=false
+              reason="Build failed with a network/repository/disk error that persisted after one automatic retry. Re-run the job; do not change code."
+            else
+              class=code; reason="Gradle build failed. This is a code or build-configuration problem: read the Build step log and repair (counts toward the 3 repairs)."
+            fi
+          elif [ "$BUILD" != success ]; then
+            class=infrastructure; reason="Build did not run (earlier step failed: checkout or toolchain setup). Re-run the job."
+          elif [ "$VALIDATE" = failure ]; then
+            class=code; reason="APK built but failed package/signing validation. Treat as a build-configuration problem (counts toward the 3 repairs)."
+          elif [ "$UPLOAD" = failure ] && [ "$UPLOAD_RETRY" != success ]; then
+            class=infrastructure; manual=true
+            reason="APK is built and validated but could not be stored. Most likely the account's Actions artifact storage quota is full (GitHub recalculates usage every 6-12 hours); otherwise an upload outage or permissions. Free artifact storage in Settings > Billing, or wait, then re-run failed jobs. Do not change code."
+          fi
+          {
+            echo "failure_class=$class"
+            echo "manual_intervention=$manual"
+          } >> "$GITHUB_OUTPUT"
+          echo "AUTOBUILD-RESULT class=$class manual_intervention=$manual build=$BUILD validate=$VALIDATE upload=$UPLOAD retry=${UPLOAD_RETRY:-n/a}"
+          {
+            echo "### AutoBuild result: \`$class\`"
+            echo "- manual intervention required: **$manual**"
+            echo "- $reason"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$manual" = true ]; then
+            echo "::error title=MANUAL INTERVENTION REQUIRED::$reason"
+          elif [ "$class" != none ]; then
+            echo "::error title=AutoBuild failure ($class)::$reason"
+          fi
+          [ "$class" = none ]

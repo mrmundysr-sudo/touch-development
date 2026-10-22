@@ -26,6 +26,35 @@ Applies to every Android repository owned by mrmundysr-sudo. The registry is
 8. **If still failing after 3 repairs:** stop, push nothing further, and report the failing
    step, the error text, what was tried, and a suggested next step.
 
+## Reading the result: code vs infrastructure
+
+Every run ends with a log line `AUTOBUILD-RESULT class=<none|code|infrastructure> manual_intervention=<true|false> ...`
+(also in the run summary and as the `failure_class` / `manual_intervention` workflow outputs).
+
+| class | meaning | what Claude does |
+|---|---|---|
+| `none` | built, validated, stored | deliver the APK |
+| `code` | compile/test/lint/config error, or APK failed validation | diagnose and repair (max 3) |
+| `infrastructure`, manual=false | network/repo/disk error that survived one automatic retry, or job setup failed | re-run failed jobs once; if it fails again, report; never edit code |
+| `infrastructure`, manual=true | APK built but could not be stored (usually artifact storage quota) | stop, report **MANUAL INTERVENTION REQUIRED**, schedule one re-check, never edit code |
+
+The shared workflow already retries infrastructure-looking build errors once and the artifact
+upload once, so a re-run by Claude is the second retry, not the first.
+
+### Manual-intervention report
+
+When `manual_intervention=true`, or an infrastructure failure persists after the re-run, the
+final report starts with:
+
+```
+MANUAL INTERVENTION REQUIRED
+What is blocked: <app / branch / run link>
+Cause: <one line, from the AUTOBUILD-RESULT reason>
+What only you can do: <e.g. free Actions artifact storage in Settings > Billing, or wait 6-12 h>
+What I already did: <retries, code state, validated APK built but not stored>
+What I will do next: <scheduled re-check time | nothing until you reply>
+```
+
 ## Needs the owner's explicit approval
 
 Merging to `main`, publishing or editing releases, anything touching signing keys,
