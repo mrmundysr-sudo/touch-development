@@ -13,3 +13,7 @@ New or existing Android repo:
 Repos with source packed in ZIPs (`type: zip`) are first migrated to a normal source tree:
 unpack on a `claude/` branch, keep the ZIP as `backup/`, confirm the old workflow and the
 new one produce an equivalent APK, then the owner approves the merge.
+
+## Version pinning
+
+Callers use `@v1` (reviewed release tag). Pilot callers may point at a hub dev branch only until the hub is merged and tagged; the onboarding PR must switch them to `@v1` before merging. See `VERSIONING.md`.
