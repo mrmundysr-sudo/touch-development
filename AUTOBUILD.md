@@ -18,6 +18,11 @@ Applies to every Android repository owned by mrmundysr-sudo. The registry is
    to get green. Same error after two attempts means change approach or stop.
 7. **Deliver** when the run is green: run URL, artifact name, commit SHA, SHA-256 from the
    run summary, and a short summary of changes.
+   **Classify before repairing.** Only failures caused by the code or build config in the
+   repo consume a repair: compile errors, test failures, lint, bad dependency versions,
+   Gradle config. Infrastructure failures do not: artifact storage quota ("Artifact storage
+   quota has been hit"), runner/network outages, expired tokens, GitHub 5xx. Never edit code
+   for those. Report them, retry a failed job at most once, and stop if it persists.
 8. **If still failing after 3 repairs:** stop, push nothing further, and report the failing
    step, the error text, what was tried, and a suggested next step.
 
