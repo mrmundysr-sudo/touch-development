@@ -1,0 +1,26 @@
+# Touch AutoBuild caller. Copy to .github/workflows/autobuild.yml in an app repo
+# and edit the `with:` block (values come from autobuild/projects.yml in the hub).
+# Builds every claude/** branch push and manual dispatch; publishes nothing.
+name: AutoBuild (dev branches)
+
+on:
+  push:
+    branches: ["claude/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autobuild-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: mrmundysr-sudo/touch-development/.github/workflows/android-build.yml@v1
+    with:
+      artifact_name: APP_NAME-debug-${{ github.run_number }}
+      project_dir: "."
+      java_version: "17"
+      # gradle_version: "8.9"   # only if the repo has no gradlew
+      # tasks: "assembleDebug"

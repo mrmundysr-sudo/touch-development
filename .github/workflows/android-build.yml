@@ -1,0 +1,100 @@
+# Touch AutoBuild: reusable Android debug-build workflow.
+# Called from each app repository (see templates/autobuild-caller.yml).
+# Builds, validates and uploads a debug APK artifact. It never creates releases,
+# never pushes, and needs no secrets.
+name: Touch AutoBuild (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        description: Name of the uploaded artifact
+        required: true
+        type: string
+      project_dir:
+        description: Directory containing settings.gradle and gradlew
+        type: string
+        default: "."
+      java_version:
+        type: string
+        default: "17"
+      gradle_version:
+        description: Only used when the project has no gradlew
+        type: string
+        default: ""
+      tasks:
+        description: Gradle tasks to run
+        type: string
+        default: "assembleDebug"
+      apk_path:
+        description: APK path relative to project_dir
+        type: string
+        default: "app/build/outputs/apk/debug/app-debug.apk"
+      retention_days:
+        type: number
+        default: 7
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ${{ inputs.project_dir }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java ${{ inputs.java_version }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java_version }}
+          cache: gradle
+
+      - name: Set up Gradle (only when the project has no wrapper)
+        if: ${{ inputs.gradle_version != '' }}
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ inputs.gradle_version }}
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew --no-daemon ${{ inputs.tasks }}
+          else
+            gradle --no-daemon ${{ inputs.tasks }}
+          fi
+
+      - name: Validate APK package and signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="${{ inputs.apk_path }}"
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | head -n 20
+          unzip -t "$APK" | tail -n 1
+          SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
+          {
+            echo "### Debug APK validated"
+            echo "- Source: \`${{ github.ref_name }}\` @ \`${GITHUB_SHA::7}\`"
+            echo "- File: \`$APK\` ($(stat -c%s "$APK") bytes)"
+            echo "- SHA-256: \`$SHA\`"
+            echo "- Download: Artifacts section of this run (artifact \`${{ inputs.artifact_name }}\`)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.project_dir }}/${{ inputs.apk_path }}
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}

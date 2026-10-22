@@ -24,3 +24,7 @@ Individual repositories
 - app-specific assets
 - app-specific specifications
 - a pointer back to this master repository
+
+## Touch AutoBuild
+
+Shared Android build system for all Touch repositories: see `AUTOBUILD.md` (assignment loop and rules), `autobuild/projects.yml` (registry), `autobuild/ONBOARDING.md`, and the reusable workflow in `.github/workflows/android-build.yml`.
