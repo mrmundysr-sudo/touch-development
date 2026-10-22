@@ -5,7 +5,7 @@ was the only blocker. Roll out in waves. Each repo gets a caller (`.github/workf
 and a `CLAUDE.md` pointer through a one-time onboarding PR that the owner merges. Existing
 `main` workflows stay unchanged until the replacement is verified (owner's rule).
 
-Prerequisite for every wave: hub merged, tag `v1` created, callers pinned to `@v1`.
+Prerequisite for every wave: hub merged, release tag `v1.0.0` created on the merge commit, callers pinned to that commit's full SHA with a `# v1.0.0` comment.
 
 ## Wave 1: plain Gradle repos with a wrapper (low risk)
 

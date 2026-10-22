@@ -1,6 +1,6 @@
 # Touch AutoBuild caller. Copy to .github/workflows/autobuild.yml in an app repo
 # and edit the `with:` block (values come from autobuild/projects.yml in the hub).
-# Always pin to a reviewed release tag (see autobuild/VERSIONING.md), never to a branch.
+# Production: pin to a reviewed commit SHA with a version comment (see autobuild/VERSIONING.md), never a branch.
 # Builds every claude/** branch push and manual dispatch; publishes nothing.
 name: AutoBuild (dev branches)
 
@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   build:
-    uses: mrmundysr-sudo/touch-development/.github/workflows/android-build.yml@v1
+    uses: mrmundysr-sudo/touch-development/.github/workflows/android-build.yml@REVIEWED_COMMIT_SHA # v1.0.0
     with:
       artifact_name: APP_NAME-debug-${{ github.run_number }}
       project_dir: "."

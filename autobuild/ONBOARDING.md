@@ -16,4 +16,4 @@ new one produce an equivalent APK, then the owner approves the merge.
 
 ## Version pinning
 
-Callers use `@v1` (reviewed release tag). Pilot callers may point at a hub dev branch only until the hub is merged and tagged; the onboarding PR must switch them to `@v1` before merging. See `VERSIONING.md`.
+Production callers pin the hub workflow to a reviewed commit SHA with a version comment (`@<sha> # v1.0.0`). Pilot callers may point at a hub dev branch only until the hub is merged and tagged; the onboarding PR must switch them to the SHA before merging. See `VERSIONING.md`.
