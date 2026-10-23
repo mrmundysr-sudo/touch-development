@@ -1,0 +1,69 @@
+# One-off, owner-approved release tagging for the hub: creates the immutable tag v1.0.1 at the verified
+# merge commit of PR #5 (shared APK validator fix). Everything is hard-coded and nothing is an input.
+# It refuses to touch an existing tag that points anywhere else, never moves or deletes a tag, and
+# asserts that v1.0.0 and v1 still point at the original reviewed commit. Lives on a development
+# branch; not part of main.
+name: Create v1.0.1 tag (one-off)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/create-v101-tag"]
+    paths: [".github/workflows/create-v101-tag.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: create-v101-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out main with full history (no persisted credentials)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify the commit, then create the missing tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED: 97ce9ff9e6e178052c3ac64f8a7a3ed1fdb1bf5c
+          EXPECTED_TREE: f0ef3152428694009a0d280d92fd498d247e69a7
+          EXPECTED_WORKFLOW_BLOB_PREFIX: bbf53a2c9d2fc08b
+          ORIGINAL: 1926b52b24140572a299004a023f692f9357b83e
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=v1.0.1
+          # 1. Verify the exact commit before creating anything.
+          [ "$(git cat-file -t "$EXPECTED")" = commit ] || { echo "::error::$EXPECTED is not a commit"; exit 1; }
+          [ "$(git rev-parse "$EXPECTED")" = "$EXPECTED" ] || { echo "::error::SHA did not resolve to itself"; exit 1; }
+          git merge-base --is-ancestor "$EXPECTED" origin/main || { echo "::error::$EXPECTED is not on main"; exit 1; }
+          [ "$(git rev-parse "$EXPECTED^{tree}")" = "$EXPECTED_TREE" ] || { echo "::error::tree differs from the reviewed tree"; exit 1; }
+          [ "$(git show "$EXPECTED:.github/workflows/android-build.yml" | sha256sum | cut -c1-16)" = "$EXPECTED_WORKFLOW_BLOB_PREFIX" ] || { echo "::error::android-build.yml differs from the reviewed file"; exit 1; }
+          echo "verified: $EXPECTED is on main with the reviewed tree $EXPECTED_TREE"
+          # 2. v1.0.0 and v1 must still be untouched.
+          for t in v1.0.0 v1; do
+            cur="$(git ls-remote --tags origin "refs/tags/$t" | cut -f1)"
+            [ "$cur" = "$ORIGINAL" ] || { echo "::error::$t is $cur, expected $ORIGINAL"; exit 1; }
+          done
+          # 3. Create v1.0.1 only if it does not exist. Never overwrite, move or delete.
+          cur="$(git ls-remote --tags origin "refs/tags/$tag" | cut -f1)"
+          if [ -n "$cur" ]; then
+            [ "$cur" = "$EXPECTED" ] && echo "$tag already points at $EXPECTED: no change" || { echo "::error::$tag exists at $cur, refusing to touch it"; exit 1; }
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$EXPECTED" --jq '"created \(.ref) -> \(.object.sha)"'
+          fi
+          # 4. Verify from GitHub.
+          got="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)"
+          [ "$got" = "$EXPECTED" ] || { echo "::error::$tag resolves to $got, expected $EXPECTED"; exit 1; }
+          for t in v1.0.0 v1; do
+            [ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$t" --jq .object.sha)" = "$ORIGINAL" ] || { echo "::error::$t changed"; exit 1; }
+          done
+          echo "TAG-VERIFIED $tag -> $got; v1.0.0 and v1 unchanged at $ORIGINAL"
