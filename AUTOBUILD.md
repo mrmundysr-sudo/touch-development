@@ -36,7 +36,7 @@ Every run ends with a log line `AUTOBUILD-RESULT class=<none|code|infrastructure
 | `none` | built, validated, stored | deliver the APK |
 | `code` | compile/test/lint/config error, or APK failed validation | diagnose and repair (max 3) |
 | `infrastructure`, manual=false | network/repo/disk error that survived one automatic retry, or job setup failed | re-run failed jobs once; if it fails again, report; never edit code |
-| `infrastructure`, manual=true | APK built but could not be stored (usually artifact storage quota) | stop, report **MANUAL INTERVENTION REQUIRED**, schedule one re-check, never edit code |
+| `infrastructure`, manual=true | APK built but could not be stored (usually the artifact storage allowance; applies to **private** repos only, public repos are not metered) | stop, report **MANUAL INTERVENTION REQUIRED**, schedule one re-check, never edit code |
 
 The shared workflow already retries infrastructure-looking build errors once and the artifact
 upload once, so a re-run by Claude is the second retry, not the first.

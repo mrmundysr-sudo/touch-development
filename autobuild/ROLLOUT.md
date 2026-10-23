@@ -66,3 +66,7 @@ then trim it to the shared workflow and 3-day retention.
 - A deliberate compile error produces `AUTOBUILD-RESULT class=code`; the repair restores green.
 - No release was created; `main` unchanged except the approved onboarding PR.
 - Registry entry set to `active`.
+
+## Artifact storage: private vs public repositories
+
+GitHub does not meter Actions artifact storage for public repositories, but private repositories draw on the plan's included allowance. Observed on 2026-10-23: public repos (TouchV, Touch-Parchis, Touch-Toolbox) stored artifacts normally while the private pilot repo (touch-clean) was rejected with `Artifact storage quota has been hit`, even for brand-new runs. Before onboarding a private repository, confirm storage headroom in Settings > Billing and plans, keep retention at 3 days, and prefer fewer, smaller uploads. Private repos currently: arcade-touch, Touch_7_Come_11, Couchcast, touch-sports-guide, Touch-Word-Bomb, touch-clean, touch-cast, Touch_Schatzi, Touch-Find-A-Word, app-visual-builder, Touch-Rewards, ScoobertsHangman, Pictureshop.

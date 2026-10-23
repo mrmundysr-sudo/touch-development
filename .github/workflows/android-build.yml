@@ -189,7 +189,7 @@ jobs:
             class=code; reason="APK built but failed package/signing validation. Treat as a build-configuration problem (counts toward the 3 repairs)."
           elif [ "$UPLOAD" = failure ] && [ "$UPLOAD_RETRY" != success ]; then
             class=infrastructure; manual=true
-            reason="APK is built and validated but could not be stored. Most likely the account's Actions artifact storage quota is full (GitHub recalculates usage every 6-12 hours); otherwise an upload outage or permissions. Free artifact storage in Settings > Billing, or wait, then re-run failed jobs. Do not change code."
+            reason="APK is built and validated but could not be stored. Most likely the Actions artifact-storage allowance is used up: for PRIVATE repositories this is the plan allowance (public repositories are not metered) and GitHub can take hours, or until the billing-cycle reset, to reflect freed space; otherwise an upload outage or permissions. Check Settings > Billing and plans > Actions, free space or raise the spending limit, then start a fresh run. Do not change code."
           fi
           {
             echo "failure_class=$class"
