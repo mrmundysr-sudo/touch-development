@@ -166,7 +166,13 @@ jobs:
           test -s "$APK"
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
-          "$BUILD_TOOLS/aapt" dump badging "$APK" | head -n 20
+          # aapt can exit non-zero for APKs whose manifest references framework resources
+          # (for example a default android:icon); the APK is still valid. Require the package
+          # line instead of the exit code, and avoid SIGPIPE from head under pipefail.
+          BADGING="$(mktemp)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > "$BADGING" 2>&1 || echo "::warning::aapt dump badging exited non-zero (see output); checking package line"
+          grep -m1 '^package: name=' "$BADGING" || { echo "::error::aapt could not read the package name from the APK"; exit 1; }
+          sed -n '1,20p' "$BADGING"
           unzip -t "$APK" | tail -n 1
           SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
           {
