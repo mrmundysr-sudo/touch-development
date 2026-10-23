@@ -51,6 +51,21 @@ on:
         description: Extra Android SDK packages to install, space separated (e.g. "platforms;android-35 cmake;3.22.1")
         type: string
         default: ""
+      node_version:
+        description: "Optional. Node.js version to install before the prebuild script (for example 20 for Capacitor projects)"
+        type: string
+        default: ""
+      prebuild_script:
+        description: >-
+          Optional. Path, relative to the repository root, of a script that is committed in the repository being built
+          (for example .autobuild/prebuild.sh). It runs once before Gradle, with a minimal environment and no secrets, and
+          may create project_dir (for example a Capacitor android/ folder or an NDK-built native core). Never a command string.
+        type: string
+        default: ""
+      prebuild_timeout_minutes:
+        description: Time limit for the prebuild script
+        type: number
+        default: 20
       retention_days:
         description: Development artifacts expire after 3 days unless a caller overrides
         type: number
@@ -91,6 +106,7 @@ jobs:
     permissions:
       contents: read
     outputs:
+      prebuild: ${{ steps.outcomes.outputs.prebuild }}
       build: ${{ steps.outcomes.outputs.build }}
       infra_error: ${{ steps.outcomes.outputs.infra_error }}
       validate: ${{ steps.outcomes.outputs.validate }}
@@ -119,8 +135,15 @@ jobs:
         with:
           gradle-version: ${{ inputs.gradle_version }}
 
+      - name: Set up Node.js ${{ inputs.node_version }} (optional)
+        if: ${{ inputs.node_version != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
       - name: Install extra Android SDK packages
         if: ${{ inputs.sdk_packages != '' }}
+        working-directory: ${{ github.workspace }}
         env:
           SDK_PACKAGES: ${{ inputs.sdk_packages }}
         shell: bash
@@ -130,8 +153,48 @@ jobs:
           # shellcheck disable=SC2086
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" $SDK_PACKAGES
 
+      - name: Run prebuild script (optional; repository-controlled, minimal environment, no secrets)
+        id: prebuild
+        if: ${{ inputs.prebuild_script != '' }}
+        continue-on-error: true
+        timeout-minutes: ${{ inputs.prebuild_timeout_minutes }}
+        working-directory: ${{ github.workspace }}
+        env:
+          PREBUILD_SCRIPT: ${{ inputs.prebuild_script }}
+          PROJECT_DIR: ${{ inputs.project_dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 1. The input is only ever a path to a file that is committed in the repository being built.
+          p="$PREBUILD_SCRIPT"
+          [[ "$p" =~ ^[A-Za-z0-9_.][A-Za-z0-9_./-]*$ ]] || { echo "::error::prebuild_script must be a plain relative path"; exit 1; }
+          case "$p" in *..*) echo "::error::prebuild_script must not contain '..'"; exit 1;; esac
+          f="$GITHUB_WORKSPACE/$p"
+          [ -f "$f" ] && [ ! -L "$f" ] || { echo "::error::prebuild_script is not a regular file in the repository: $p"; exit 1; }
+          real="$(realpath "$f")"
+          case "$real" in "$GITHUB_WORKSPACE"/*) ;; *) echo "::error::prebuild_script resolves outside the workspace"; exit 1;; esac
+          git -C "$GITHUB_WORKSPACE" ls-files --error-unmatch -- "$p" >/dev/null 2>&1 || { echo "::error::prebuild_script is not tracked in the checked-out commit: $p"; exit 1; }
+          echo "prebuild script: $p (sha256 $(sha256sum "$real" | cut -d' ' -f1))"
+          # 2. Run it with an allow-listed environment: no GITHUB_TOKEN, no ACTIONS_* variables, no
+          #    GITHUB_ENV/GITHUB_OUTPUT, so it cannot read credentials or alter later steps.
+          keep=()
+          for k in $(compgen -e); do
+            case "$k" in
+              PATH|HOME|LANG|LC_ALL|CI|JAVA_HOME|JAVA_HOME_*|ANDROID_*|RUNNER_OS|RUNNER_ARCH|RUNNER_TEMP|GITHUB_WORKSPACE) keep+=("$k=${!k}");;
+            esac
+          done
+          keep+=("AUTOBUILD_PROJECT_DIR=$PROJECT_DIR")
+          LOG="$RUNNER_TEMP/prebuild.log"
+          set +e
+          env -i "${keep[@]}" bash "$real" 2>&1 | tee "$LOG"; rc=${PIPESTATUS[0]}
+          set -e
+          INFRA_RE='Read timed out|Connection reset|Connection refused|connect timed out|Received status code (429|5[0-9][0-9])|Server returned HTTP response code: 5|Premature end of Content-Length|UnknownHostException|SSLHandshakeException|No space left on device|ETIMEDOUT|ECONNRESET|EAI_AGAIN'
+          if [ "$rc" -ne 0 ] && grep -Eq "$INFRA_RE" "$LOG"; then echo "infra_error=true" >> "$GITHUB_OUTPUT"; fi
+          exit "$rc"
+
       - name: Build
         id: build
+        if: ${{ steps.prebuild.outcome != 'failure' }}
         env:
           TASKS: ${{ inputs.tasks }}
         shell: bash
@@ -156,6 +219,7 @@ jobs:
 
       - name: Validate APK package and signing
         id: validate
+        if: ${{ steps.build.outcome == 'success' }}
         env:
           APK: ${{ inputs.apk_path }}
           ART: ${{ inputs.artifact_name }}
@@ -200,6 +264,7 @@ jobs:
 
       - name: Upload APK artifact
         id: upload
+        if: ${{ steps.validate.outcome == 'success' }}
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -237,15 +302,20 @@ jobs:
         id: outcomes
         if: ${{ always() }}
         env:
+          PREBUILD: ${{ steps.prebuild.outcome }}
           BUILD: ${{ steps.build.outcome }}
           INFRA_ERR: ${{ steps.build.outputs.infra_error }}
+          PREBUILD_INFRA_ERR: ${{ steps.prebuild.outputs.infra_error }}
           VALIDATE: ${{ steps.validate.outcome }}
           UPLOAD: ${{ steps.upload.outcome }}
           UPLOAD_RETRY: ${{ steps.upload_retry.outcome }}
           STASH: ${{ steps.stash.outcome }}
         shell: bash
         run: |
+          # A failed prebuild stops the build; report it through the same build=failure path.
+          if [ "$PREBUILD" = failure ]; then BUILD=failure; INFRA_ERR="$PREBUILD_INFRA_ERR"; fi
           {
+            echo "prebuild=$PREBUILD"
             echo "build=$BUILD"
             echo "infra_error=$INFRA_ERR"
             echo "validate=$VALIDATE"
@@ -368,6 +438,7 @@ jobs:
         id: classify
         env:
           BUILD_JOB: ${{ needs.build.result }}
+          PREBUILD: ${{ needs.build.outputs.prebuild }}
           BUILD: ${{ needs.build.outputs.build }}
           INFRA_ERR: ${{ needs.build.outputs.infra_error }}
           VALIDATE: ${{ needs.build.outputs.validate }}
@@ -384,6 +455,8 @@ jobs:
             if [ "$INFRA_ERR" = true ]; then
               class=infrastructure
               reason="Build failed with a network/repository/disk error that persisted after one automatic retry. Re-run the job; do not change code."
+            elif [ "$PREBUILD" = failure ]; then
+              class=code; reason="The prebuild script failed before Gradle ran. This is a code or build-configuration problem in the repository's prebuild script: read the prebuild step log and repair (counts toward the 3 repairs)."
             else
               class=code; reason="Gradle build failed. This is a code or build-configuration problem: read the Build step log and repair (counts toward the 3 repairs)."
             fi
@@ -406,7 +479,7 @@ jobs:
             echo "delivery=$delivery"
             echo "delivery_url=${FALLBACK_URL:-}"
           } >> "$GITHUB_OUTPUT"
-          echo "AUTOBUILD-RESULT class=$class manual_intervention=$manual delivery=$delivery build=${BUILD:-n/a} validate=${VALIDATE:-n/a} upload=${UPLOAD:-n/a} retry=${UPLOAD_RETRY:-n/a} fallback=${FALLBACK_JOB:-n/a}"
+          echo "AUTOBUILD-RESULT class=$class manual_intervention=$manual delivery=$delivery build=${BUILD:-n/a} validate=${VALIDATE:-n/a} upload=${UPLOAD:-n/a} retry=${UPLOAD_RETRY:-n/a} fallback=${FALLBACK_JOB:-n/a} prebuild=${PREBUILD:-n/a}"
           if [ "$delivery" = devtest-release ] && [ -n "${FALLBACK_URL:-}" ]; then echo "DELIVERY-URL $FALLBACK_URL"; fi
           {
             echo "### AutoBuild result: \`$class\`"
