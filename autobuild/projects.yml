@@ -6,14 +6,14 @@ owner: mrmundysr-sudo
 projects:
   touch-clean:
     type: gradle
-    status: onboarding-pr
+    status: active
     project_dir: "."
     java: "17"
     gradle: wrapper
     tasks: assembleDebug
     apk: app/build/outputs/apk/debug/app-debug.apk
     existing_workflow: build-debug-apk.yml
-    onboarding: "draft PR touch-clean#6 (branch claude/autobuild-pilot); private repo: artifact storage restricted, uses DEV/TEST prerelease fallback"
+    onboarding: "merged 9172cc0; caller pinned to hub 1926b52 (v1.0.0)"
   Touch-Developer-:
     type: gradle
     status: planned
@@ -23,41 +23,45 @@ projects:
     tasks: "testDebugUnitTest lintDebug assembleDebug"
   TouchV:
     type: gradle
-    status: onboarding-branch
+    status: active
     java: "17"
     gradle: wrapper
     tasks: ":app:assembleDebug"
     existing_workflow: android.yml
-    onboarding: "branch claude/autobuild-onboarding pushed; public repo; artifact stored on first run"
+    onboarding: "merged c4d0978; caller pinned to hub 1926b52 (v1.0.0)"
   Touch-Toolbox:
     type: gradle
-    status: onboarding-branch
+    status: active
     java: "21"
     gradle: wrapper (8.9)
     note: Two overlapping workflows (android-debug-apk.yml, build.yml); consolidate before onboarding.
-    onboarding: "branch claude/autobuild-onboarding pushed (caller only; the two existing workflows are not consolidated yet); public repo; artifact stored on first run"
+    onboarding: "merged 8bba2ee; caller pinned to hub 1926b52 (v1.0.0)"
   Touch-Parchis:
     type: gradle
-    status: onboarding-branch
+    status: active
     project_dir: TouchParchis
     java: "17"
     tasks: "clean test lintDebug assembleDebug"
-    onboarding: "branch claude/autobuild-onboarding pushed; public repo; artifact stored on first run"
+    onboarding: "merged 9e27d82; caller pinned to hub 1926b52 (v1.0.0)"
   touch-cast:
     type: gradle
-    status: planned
+    status: active
+    onboarding: "merged PR #1 (436e58e); caller pinned to hub 1926b52 (v1.0.0)"
+    note: "App never compiled: draft PR touch-cast#2 (claude/fix-compile-errors, 728db71) fixes CastMediaControlIntent import, JSONTokener decode and a Kotlin duplicate-class conflict; green build and APK verified; awaiting owner approval to merge app-code changes."
     java: "17"
     gradle: "8.9 (installed, no gradlew)"
   Pictureshop:
     type: gradle
-    status: planned
+    status: active
+    onboarding: "merged PR #1 (16947a8); caller pinned to hub 1926b52 (v1.0.0)"
     java: "17"
     gradle: "8.7 (installed, no gradlew)"
     note: Existing workflow caches the debug keystore across builds.
   fresh-start-touch-wipe-out:
     type: gradle
-    status: planned
-    note: Has gradlew but no workflow yet.
+    status: active
+    onboarding: "merged PR #1 (dd8e550); caller pinned to hub 1926b52 (v1.0.0)"
+    note: "Flat upload of Touch Clean 0.13.1. Draft PR fresh-start-touch-wipe-out#2 (claude/restore-layout, 6891810) restores the Gradle layout by renames plus app/build.gradle; green build and artifact verified (run 39899969630); awaiting owner approval. Until merged, main stays unbuildable and only claude/** branches build."
   Touch_7_Come_11:
     type: capacitor
     status: planned
@@ -73,8 +77,9 @@ projects:
     note: Same as Touch-One.
   app-visual-builder:
     type: zip
-    status: blocked
-    note: Builds from AppVisualBuilder.zip. Migrate after the pilot.
+    status: onboarding-pr
+    gradle: "8.9 (installed, no gradlew)"
+    note: "Draft PR app-visual-builder#1 unpacks the ZIP (backup kept) and adds the caller. Needs hub fix touch-development#5 (aapt exit code on framework icon) first."
   arcade-touch:
     type: zip
     status: blocked
