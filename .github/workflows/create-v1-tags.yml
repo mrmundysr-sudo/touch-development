@@ -48,7 +48,8 @@ jobs:
           echo "verified: $EXPECTED is on main with the reviewed tree $EXPECTED_TREE"
           # 2. Create each tag only if it does not exist. Never overwrite, move or delete.
           for tag in v1.0.0 v1; do
-            cur="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha 2>/dev/null || true)"
+            # git ls-remote is authoritative: empty output means the tag does not exist.
+            cur="$(git ls-remote --tags origin "refs/tags/$tag" | cut -f1)"
             if [ -n "$cur" ]; then
               if [ "$cur" = "$EXPECTED" ]; then
                 echo "$tag already points at $EXPECTED: no change"; continue
