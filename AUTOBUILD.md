@@ -28,7 +28,7 @@ Applies to every Android repository owned by mrmundysr-sudo. The registry is
 
 ## Reading the result: code vs infrastructure
 
-Every run ends with a log line `AUTOBUILD-RESULT class=<none|code|infrastructure> manual_intervention=<true|false> ...`
+Every run ends, in the `result` job (job name `<caller job> / result`), with a log line `AUTOBUILD-RESULT class=<none|code|infrastructure> manual_intervention=<true|false> ...`
 (also in the run summary and as the `failure_class` / `manual_intervention` / `delivery` / `delivery_url` workflow outputs).
 
 | class | meaning | what Claude does |
@@ -55,6 +55,10 @@ What only you can do: <e.g. free Actions artifact storage in Settings > Billing,
 What I already did: <retries, code state, validated APK built but not stored>
 What I will do next: <scheduled re-check time | nothing until you reply>
 ```
+
+### DEV/TEST prereleases
+
+When `delivery=devtest-release`, the APK is a DEV/TEST prerelease (see `autobuild/DEVTEST-DELIVERY.md`). The `housekeeping` job prunes expired ones automatically (7 days; newest 3 kept; owner holds via `prune_keep_tags`). Claude never edits or deletes releases itself and never touches production releases or stable tags.
 
 ## Needs the owner's explicit approval
 

@@ -20,4 +20,4 @@ Production callers pin the hub workflow to a reviewed commit SHA with a version 
 
 ## Permissions
 
-Callers declare `contents: write` so the shared workflow can use the DEV/TEST prerelease fallback (`DEVTEST-DELIVERY.md`). It is only exercised on `claude/**` branches when artifact upload fails.
+Callers declare `contents: write` as the ceiling. The shared workflow gives write access only to its `fallback` and `housekeeping` jobs (DEV/TEST prerelease delivery and cleanup, `claude/**` only, no checkout); the job that runs Gradle and repository code is read-only. See `DEVTEST-DELIVERY.md`.

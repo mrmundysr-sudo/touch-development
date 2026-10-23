@@ -1,20 +1,24 @@
 # Touch AutoBuild: reusable Android debug-build workflow.
 # Called from each app repository (see templates/autobuild-caller.yml).
-# Builds, validates and uploads a debug APK artifact. It never creates releases,
-# never pushes, and needs no secrets.
+# Builds, validates and delivers a debug APK. Needs no secrets and makes no paid API calls.
 #
-# Delivery: the APK is uploaded as an Actions artifact. If that fails (for example the private-repo
-# artifact storage allowance is used up) and the run is for a claude/** development branch, the
-# validated APK is published as a clearly labelled DEV/TEST *prerelease* asset instead (tag prefix
-# `devtest-`). It never runs for main or other branches, never creates a stable release, never moves a
-# stable tag. See autobuild/DEVTEST-DELIVERY.md. This needs `contents: write` from the caller.
+# Least privilege: the job that runs repository code (Gradle build scripts, dependencies) has
+# `contents: read` only, checks out without persisting credentials, and cannot write to the
+# repository. Only two tiny jobs hold `contents: write`; neither checks out or runs repository
+# code, they only run fixed `gh` commands:
+#   fallback      publishes the DEV/TEST prerelease when artifact upload failed (claude/** only)
+#   housekeeping  prunes expired DEV/TEST prereleases (claude/** only)
+# The validated APK reaches the fallback job through the Actions *cache*, which is separate from
+# the artifact storage that may be exhausted.
 #
-# Failure handling: every failed run is classified so callers (and Claude) can tell
-# code problems from GitHub/infrastructure problems:
-#   failure_class = none | code | infrastructure
-#   manual_intervention = true when only a person can fix it (e.g. artifact storage quota)
-# Infrastructure-looking build failures (network timeouts, 5xx/429 from repositories,
-# disk full) are retried once automatically before being reported.
+# Delivery: Actions artifact; if that fails on a claude/** branch, a clearly labelled DEV/TEST
+# *prerelease* (tag prefix `devtest-`). Never main, never a stable release or tag.
+# See autobuild/DEVTEST-DELIVERY.md.
+#
+# Failure handling: every run ends in the `result` job with
+#   AUTOBUILD-RESULT class=<none|code|infrastructure> manual_intervention=<true|false> delivery=<...>
+# Infrastructure-looking build failures (network timeouts, 5xx/429 from repositories, disk full)
+# are retried once automatically before being reported.
 name: Touch AutoBuild (reusable)
 
 on:
@@ -51,38 +55,56 @@ on:
         description: Development artifacts expire after 3 days unless a caller overrides
         type: number
         default: 3
+      prune_keep_tags:
+        description: Space-separated DEV/TEST prerelease tags the housekeeping job must never delete (owner holds)
+        type: string
+        default: ""
+      prune_max_age_days:
+        description: DEV/TEST prereleases older than this many days are deleted (minimum 7 unless prune_dry_run)
+        type: number
+        default: 7
+      prune_dry_run:
+        description: Only list what housekeeping would delete
+        type: boolean
+        default: false
     outputs:
       failure_class:
         description: none | code | infrastructure
-        value: ${{ jobs.build.outputs.failure_class }}
+        value: ${{ jobs.result.outputs.failure_class }}
       manual_intervention:
         description: "true when a person must act"
-        value: ${{ jobs.build.outputs.manual_intervention }}
+        value: ${{ jobs.result.outputs.manual_intervention }}
       delivery:
         description: artifact | devtest-release | none
-        value: ${{ jobs.build.outputs.delivery }}
+        value: ${{ jobs.result.outputs.delivery }}
       delivery_url:
         description: URL of the DEV/TEST prerelease when delivery=devtest-release
-        value: ${{ jobs.build.outputs.delivery_url }}
+        value: ${{ jobs.result.outputs.delivery_url }}
 
 permissions:
-  contents: write   # only used by the DEV/TEST prerelease fallback; callers must grant it
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
     outputs:
-      failure_class: ${{ steps.classify.outputs.failure_class }}
-      manual_intervention: ${{ steps.classify.outputs.manual_intervention }}
-      delivery: ${{ steps.classify.outputs.delivery }}
-      delivery_url: ${{ steps.fallback.outputs.url }}
+      build: ${{ steps.outcomes.outputs.build }}
+      infra_error: ${{ steps.outcomes.outputs.infra_error }}
+      validate: ${{ steps.outcomes.outputs.validate }}
+      upload: ${{ steps.outcomes.outputs.upload }}
+      upload_retry: ${{ steps.outcomes.outputs.upload_retry }}
+      fallback_needed: ${{ steps.outcomes.outputs.fallback_needed }}
     defaults:
       run:
         working-directory: ${{ inputs.project_dir }}
     steps:
-      - name: Check out source
+      - name: Check out source (read-only, no persisted credentials)
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Java ${{ inputs.java_version }}
         uses: actions/setup-java@v4
@@ -178,25 +200,73 @@ jobs:
           retention-days: ${{ inputs.retention_days }}
           overwrite: true
 
-      - name: DEV/TEST delivery fallback (GitHub prerelease asset)
-        id: fallback
-        if: ${{ always() && steps.validate.outcome == 'success' && steps.upload.outcome == 'failure' && steps.upload_retry.outcome != 'success' && startsWith(github.ref, 'refs/heads/claude/') }}
+      - name: Stash validated APK in the Actions cache for the fallback job
+        id: stash
+        if: ${{ steps.validate.outcome == 'success' && steps.upload.outcome == 'failure' && steps.upload_retry.outcome != 'success' && startsWith(github.ref, 'refs/heads/claude/') }}
         continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ inputs.project_dir }}/${{ inputs.apk_path }}
+          key: autobuild-apk-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Record outcomes
+        id: outcomes
+        if: ${{ always() }}
+        env:
+          BUILD: ${{ steps.build.outcome }}
+          INFRA_ERR: ${{ steps.build.outputs.infra_error }}
+          VALIDATE: ${{ steps.validate.outcome }}
+          UPLOAD: ${{ steps.upload.outcome }}
+          UPLOAD_RETRY: ${{ steps.upload_retry.outcome }}
+          STASH: ${{ steps.stash.outcome }}
+        shell: bash
+        run: |
+          {
+            echo "build=$BUILD"
+            echo "infra_error=$INFRA_ERR"
+            echo "validate=$VALIDATE"
+            echo "upload=$UPLOAD"
+            echo "upload_retry=$UPLOAD_RETRY"
+            if [ "$STASH" = success ]; then echo "fallback_needed=true"; else echo "fallback_needed=false"; fi
+          } >> "$GITHUB_OUTPUT"
+
+  fallback:
+    # DEV/TEST prerelease delivery. Holds contents: write, but checks out nothing and runs no repository code.
+    needs: build
+    if: ${{ always() && needs.build.outputs.fallback_needed == 'true' && startsWith(github.ref, 'refs/heads/claude/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      url: ${{ steps.publish.outputs.url }}
+    steps:
+      - name: Restore the validated APK from the Actions cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ inputs.project_dir }}/${{ inputs.apk_path }}
+          key: autobuild-apk-${{ github.run_id }}-${{ github.run_attempt }}
+          fail-on-cache-miss: true
+
+      - name: Publish DEV/TEST prerelease
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
-          APK_PATH: ${{ inputs.apk_path }}
+          APK_PATH: ${{ inputs.project_dir }}/${{ inputs.apk_path }}
           ART: ${{ inputs.artifact_name }}
         shell: bash
         run: |
           set -euo pipefail
+          case "$GITHUB_REF" in refs/heads/claude/*) ;; *) echo "refusing: not a claude/** branch"; exit 1;; esac
           TAG="devtest-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           case "$TAG" in devtest-*) ;; *) echo "refusing non-devtest tag"; exit 1;; esac
+          test -s "$APK_PATH"
           ASSET="$RUNNER_TEMP/${ART}-DEVTEST.apk"
           cp "$APK_PATH" "$ASSET"
           NOTES="DEV/TEST BUILD - NOT A PRODUCTION RELEASE.
           Built by Touch AutoBuild from branch ${GITHUB_REF_NAME} at ${GITHUB_SHA}.
           Debug-signed APK. Published as a prerelease only because the normal Actions artifact upload failed.
-          Safe to delete after 7 days (see autobuild/DEVTEST-DELIVERY.md in touch-development)."
+          Deleted automatically after 7 days (see autobuild/DEVTEST-DELIVERY.md in touch-development)."
           gh release create "$TAG" "$ASSET" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title "DEV/TEST BUILD (not a release): ${ART} - ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}" \
@@ -205,23 +275,90 @@ jobs:
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "::warning title=DEV/TEST prerelease fallback::Artifact upload failed; APK published as DEV/TEST prerelease: $URL"
 
+  housekeeping:
+    # Prunes expired DEV/TEST prereleases. Holds contents: write, but checks out nothing and runs no repository code.
+    needs: [build, fallback]
+    if: ${{ always() && startsWith(github.ref, 'refs/heads/claude/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Prune expired DEV/TEST prereleases
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP_TAGS: ${{ inputs.prune_keep_tags }}
+          MAX_AGE_DAYS: ${{ inputs.prune_max_age_days }}
+          DRY_RUN: ${{ inputs.prune_dry_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAX_AGE="$MAX_AGE_DAYS"
+          if [ "$DRY_RUN" != "true" ] && [ "$MAX_AGE" -lt 7 ]; then MAX_AGE=7; fi
+          NOW="$(date -u +%s)"
+          # Strict candidate filter: only DEV/TEST prereleases created by this system. Production
+          # releases, drafts, stable tags and anything not named devtest-* never match.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '
+            .[] | select((.tag_name | startswith("devtest-"))
+                 and .prerelease == true and .draft == false
+                 and (.name | startswith("DEV/TEST BUILD"))
+                 and (.author.login == "github-actions[bot]"))
+            | [.tag_name, (.created_at | fromdateiso8601), (((.name + " " + (.body // "")) | contains("[KEEP]")) | tostring)]
+            | @tsv' | sort -t"$(printf '\t')" -k2,2nr > "$RUNNER_TEMP/devtest.tsv"
+          rank=0; deleted=0; kept=0
+          while IFS=$'\t' read -r tag ts keepflag; do
+            [ -n "$tag" ] || continue
+            case "$tag" in devtest-*) ;; *) continue;; esac
+            rank=$((rank+1))
+            age_days=$(( (NOW - ts) / 86400 )); age_hours=$(( (NOW - ts) / 3600 ))
+            if [ "$keepflag" = true ] || [[ " $KEEP_TAGS " == *" $tag "* ]]; then
+              echo "hold   $tag (owner hold)"; kept=$((kept+1)); continue
+            fi
+            reason=""
+            if [ "$age_days" -ge "$MAX_AGE" ]; then reason="expired (${age_days}d >= ${MAX_AGE}d)"; fi
+            if [ -z "$reason" ] && [ "$rank" -gt 3 ] && [ "$age_hours" -ge 48 ]; then reason="beyond newest 3 and older than 48h"; fi
+            if [ -z "$reason" ]; then echo "keep   $tag (${age_days}d old, rank $rank)"; kept=$((kept+1)); continue; fi
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "would delete $tag: $reason"
+            else
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+              echo "deleted $tag: $reason"; deleted=$((deleted+1))
+            fi
+          done < "$RUNNER_TEMP/devtest.tsv"
+          echo "AUTOBUILD-PRUNE dry_run=$DRY_RUN deleted=$deleted kept=$kept considered=$rank max_age_days=$MAX_AGE"
+
+  result:
+    needs: [build, fallback]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      failure_class: ${{ steps.classify.outputs.failure_class }}
+      manual_intervention: ${{ steps.classify.outputs.manual_intervention }}
+      delivery: ${{ steps.classify.outputs.delivery }}
+      delivery_url: ${{ steps.classify.outputs.delivery_url }}
+    steps:
       - name: Classify result
         id: classify
-        if: ${{ always() }}
         env:
-          BUILD: ${{ steps.build.outcome }}
-          INFRA_ERR: ${{ steps.build.outputs.infra_error }}
-          VALIDATE: ${{ steps.validate.outcome }}
-          UPLOAD: ${{ steps.upload.outcome }}
-          UPLOAD_RETRY: ${{ steps.upload_retry.outcome }}
-          FALLBACK: ${{ steps.fallback.outcome }}
-          FALLBACK_URL: ${{ steps.fallback.outputs.url }}
+          BUILD_JOB: ${{ needs.build.result }}
+          BUILD: ${{ needs.build.outputs.build }}
+          INFRA_ERR: ${{ needs.build.outputs.infra_error }}
+          VALIDATE: ${{ needs.build.outputs.validate }}
+          UPLOAD: ${{ needs.build.outputs.upload }}
+          UPLOAD_RETRY: ${{ needs.build.outputs.upload_retry }}
+          FALLBACK_JOB: ${{ needs.fallback.result }}
+          FALLBACK_URL: ${{ needs.fallback.outputs.url }}
         shell: bash
         run: |
           class=none; manual=false; delivery=none; reason="build, validation and upload succeeded"
-          if [ "$BUILD" = failure ]; then
+          if [ "$BUILD_JOB" = cancelled ]; then
+            class=infrastructure; reason="The build job was cancelled. Start a fresh run."
+          elif [ "$BUILD" = failure ]; then
             if [ "$INFRA_ERR" = true ]; then
-              class=infrastructure; manual=false
+              class=infrastructure
               reason="Build failed with a network/repository/disk error that persisted after one automatic retry. Re-run the job; do not change code."
             else
               class=code; reason="Gradle build failed. This is a code or build-configuration problem: read the Build step log and repair (counts toward the 3 repairs)."
@@ -230,7 +367,7 @@ jobs:
             class=infrastructure; reason="Build did not run (earlier step failed: checkout or toolchain setup). Re-run the job."
           elif [ "$VALIDATE" = failure ]; then
             class=code; reason="APK built but failed package/signing validation. Treat as a build-configuration problem (counts toward the 3 repairs)."
-          elif [ "$UPLOAD" = failure ] && [ "$UPLOAD_RETRY" != success ] && [ "$FALLBACK" = success ]; then
+          elif [ "$UPLOAD" = failure ] && [ "$UPLOAD_RETRY" != success ] && [ "$FALLBACK_JOB" = success ]; then
             class=none; delivery=devtest-release
             reason="APK built and validated. Artifact upload failed, so it was delivered as a DEV/TEST prerelease asset (not a production release): $FALLBACK_URL"
           elif [ "$UPLOAD" = failure ] && [ "$UPLOAD_RETRY" != success ]; then
@@ -243,9 +380,10 @@ jobs:
             echo "failure_class=$class"
             echo "manual_intervention=$manual"
             echo "delivery=$delivery"
+            echo "delivery_url=${FALLBACK_URL:-}"
           } >> "$GITHUB_OUTPUT"
-          echo "AUTOBUILD-RESULT class=$class manual_intervention=$manual delivery=$delivery build=$BUILD validate=$VALIDATE upload=$UPLOAD retry=${UPLOAD_RETRY:-n/a} fallback=${FALLBACK:-n/a}"
-          [ -n "${FALLBACK_URL:-}" ] && [ "$delivery" = devtest-release ] && echo "DELIVERY-URL $FALLBACK_URL" || true
+          echo "AUTOBUILD-RESULT class=$class manual_intervention=$manual delivery=$delivery build=${BUILD:-n/a} validate=${VALIDATE:-n/a} upload=${UPLOAD:-n/a} retry=${UPLOAD_RETRY:-n/a} fallback=${FALLBACK_JOB:-n/a}"
+          if [ "$delivery" = devtest-release ] && [ -n "${FALLBACK_URL:-}" ]; then echo "DELIVERY-URL $FALLBACK_URL"; fi
           {
             echo "### AutoBuild result: \`$class\`"
             echo "- delivery: **$delivery**"

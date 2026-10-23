@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # lets the shared workflow publish the DEV/TEST prerelease fallback (claude/** only)
+  contents: write   # ceiling for the shared workflow; only its fallback/housekeeping jobs use write (claude/** only)
 
 concurrency:
   group: autobuild-${{ github.ref }}
@@ -25,3 +25,4 @@ jobs:
       java_version: "17"
       # gradle_version: "8.9"   # only if the repo has no gradlew
       # tasks: "assembleDebug"
+      # prune_keep_tags: "devtest-<run id>-<attempt>"   # owner hold on a DEV/TEST prerelease until tested
