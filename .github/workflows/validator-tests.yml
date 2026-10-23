@@ -1,4 +1,4 @@
-name: Validator tests
+name: Validator and prebuild tests
 
 # Tests the APK validation step of the shared android-build.yml against real fixture APKs.
 on:
@@ -6,12 +6,14 @@ on:
     paths:
       - ".github/workflows/android-build.yml"
       - "autobuild/tests/validator/**"
+      - "autobuild/tests/prebuild/**"
       - ".github/workflows/validator-tests.yml"
   push:
     branches: ["claude/**"]
     paths:
       - ".github/workflows/android-build.yml"
       - "autobuild/tests/validator/**"
+      - "autobuild/tests/prebuild/**"
       - ".github/workflows/validator-tests.yml"
   workflow_dispatch:
 
@@ -33,3 +35,5 @@ jobs:
           java-version: "17"
       - name: Run validator tests
         run: bash autobuild/tests/validator/run-tests.sh
+      - name: Run prebuild tests
+        run: bash autobuild/tests/prebuild/run-tests.sh

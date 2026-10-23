@@ -25,3 +25,24 @@ Callers declare `contents: write` as the ceiling. The shared workflow gives writ
 ## Older template
 
 `templates/android-debug-apk.yml` is the pre-AutoBuild standalone build template (a full workflow copied into each repo). New and migrated repositories use `templates/autobuild-caller.yml` instead. The old template stays for repositories that have not been onboarded yet and is retired once all buildable repositories use the shared workflow (rollout Phase 6).
+
+## Optional prebuild step (Capacitor, native cores)
+
+Some projects cannot run Gradle straight after checkout: a Capacitor app has to create its `android/` folder first, and a
+native app may have to compile a core with the NDK. The shared workflow supports this without arbitrary commands:
+
+| Input | Meaning |
+|---|---|
+| `prebuild_script` | Path, relative to the repository root, of a script **committed in the repository being built** (convention: `.autobuild/prebuild.sh`). Never a command string. |
+| `node_version` | Optional Node.js version, installed before the script. |
+| `prebuild_timeout_minutes` | Time limit (default 20). |
+| `project_dir` | Where Gradle runs afterwards; the script may create it. |
+| `sdk_packages` | Already supported; list `ndk;...` and `cmake;...` here. |
+
+Safeguards (enforced and tested by `autobuild/tests/prebuild/`):
+- The path must be a plain relative path, contain no `..`, not be a symlink, resolve inside the workspace and be tracked in the checked-out commit. Anything else fails before any code runs.
+- The script runs with an allow-listed environment (PATH, HOME, Java and Android variables, runner temp/workspace). `GITHUB_TOKEN`, `ACTIONS_*`, `GITHUB_ENV` and `GITHUB_OUTPUT` are not passed, so it cannot read credentials or alter later steps. The job has `contents: read`, no persisted credentials and receives no caller secrets.
+- Its SHA-256 is logged on every run. A change to the prebuild script is a build-infrastructure change and is reviewed like one.
+- A failing script is reported as `class=code` (`prebuild=failure` in the result line); network-looking failures are flagged as infrastructure. Callers that set no `prebuild_script` behave exactly as before.
+
+Examples that pass today: `Touch_7_Come_11` (Capacitor: `npm test`, `npm install`, `npx cap add android`, patch, `npx cap sync`; `java_version: "21"`, `node_version: "20"`, `project_dir: android`) and `arcade-touch` (reconstruct packed source, verify its checksum, build the pinned mGBA core with the NDK).
