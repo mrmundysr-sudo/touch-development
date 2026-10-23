@@ -17,6 +17,13 @@ So the shipped rulesets set the approving-review count to 0: they force changes 
 
 The immutable `v*.*.*` rule means `v1.0.0` can never be moved. The moving `v1` pointer is not covered by the pattern, so moving it still needs only your approval.
 
+## Findings from the 2026-10-23 dry run (all 22 repositories)
+
+* **Plan:** the GitHub API answers `Upgrade to GitHub Pro or make this repository public` for rulesets and branch protection on every private repository, so the account is on a plan without them. Rulesets can be created on the **9 public** repositories (touch-development, TouchV, Touch-Toolbox, Touch-Parchis, Touch-Developer-, Touch_Reader, Touch-One, fresh-start-touch-wipe-out, Touch-Modules). The **13 private** repositories cannot be protected by rulesets at all until the plan changes or they are made public.
+* **Existing settings:** no rulesets and no classic branch protection exist on any public repository; nothing to merge with or replace.
+* **Conflict with how work lands today:** commits reach `main` directly, not through PRs: the Touch Developer app ("Touch Developer push": TouchV, Touch_Reader, Touch-One) and earlier automation. `main-protection.json` requires a pull request for every change with no bypass, so those direct pushes would be rejected. Before applying it to a repository whose `main` is fed by the app, either switch that flow to a branch plus PR, or add a bypass for the repository admin role (which also lets any session using your identity push directly).
+* **Tag rules** (`stable-tags.json`) have no such conflict: existing workflows only create `apk-*` tags and never update or delete them.
+
 ## Plan limits (verify on your billing page)
 
 * Public repositories: branch rules and rulesets are available on every plan.
