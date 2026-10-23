@@ -1,0 +1,28 @@
+# Touch AutoBuild caller. Copy to .github/workflows/autobuild.yml in an app repo
+# and edit the `with:` block (values come from autobuild/projects.yml in the hub).
+# Production: pin to a reviewed commit SHA with a version comment (see autobuild/VERSIONING.md), never a branch.
+# Builds every claude/** branch push and manual dispatch; publishes nothing.
+name: AutoBuild (dev branches)
+
+on:
+  push:
+    branches: ["claude/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # ceiling for the shared workflow; only its fallback/housekeeping jobs use write (claude/** only)
+
+concurrency:
+  group: autobuild-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: mrmundysr-sudo/touch-development/.github/workflows/android-build.yml@REVIEWED_COMMIT_SHA # v1.0.0
+    with:
+      artifact_name: APP_NAME-debug-${{ github.run_number }}
+      project_dir: "."
+      java_version: "17"
+      # gradle_version: "8.9"   # only if the repo has no gradlew
+      # tasks: "assembleDebug"
+      # prune_keep_tags: "devtest-<run id>-<attempt>"   # owner hold on a DEV/TEST prerelease until tested

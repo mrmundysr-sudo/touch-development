@@ -1,0 +1,90 @@
+# Touch AutoBuild project registry: one entry per repository owned by mrmundysr-sudo.
+# type: gradle | capacitor | zip (source still packed in a ZIP) | none (no app code yet)
+# status: onboarding-pr | onboarding-branch | pilot | planned | blocked | n/a | active
+# Values mirror each repo's existing working build; change them only when the repo changes.
+owner: mrmundysr-sudo
+projects:
+  touch-clean:
+    type: gradle
+    status: onboarding-pr
+    project_dir: "."
+    java: "17"
+    gradle: wrapper
+    tasks: assembleDebug
+    apk: app/build/outputs/apk/debug/app-debug.apk
+    existing_workflow: build-debug-apk.yml
+    onboarding: "draft PR touch-clean#6 (branch claude/autobuild-pilot); private repo: artifact storage restricted, uses DEV/TEST prerelease fallback"
+  Touch-Developer-:
+    type: gradle
+    status: planned
+    note: Already builds claude/** branches in its own workflow (android-debug-apk.yml); keep as is.
+    java: "17"
+    gradle: wrapper
+    tasks: "testDebugUnitTest lintDebug assembleDebug"
+  TouchV:
+    type: gradle
+    status: onboarding-branch
+    java: "17"
+    gradle: wrapper
+    tasks: ":app:assembleDebug"
+    existing_workflow: android.yml
+    onboarding: "branch claude/autobuild-onboarding pushed; public repo; artifact stored on first run"
+  Touch-Toolbox:
+    type: gradle
+    status: onboarding-branch
+    java: "21"
+    gradle: wrapper (8.9)
+    note: Two overlapping workflows (android-debug-apk.yml, build.yml); consolidate before onboarding.
+    onboarding: "branch claude/autobuild-onboarding pushed (caller only; the two existing workflows are not consolidated yet); public repo; artifact stored on first run"
+  Touch-Parchis:
+    type: gradle
+    status: onboarding-branch
+    project_dir: TouchParchis
+    java: "17"
+    tasks: "clean test lintDebug assembleDebug"
+    onboarding: "branch claude/autobuild-onboarding pushed; public repo; artifact stored on first run"
+  touch-cast:
+    type: gradle
+    status: planned
+    java: "17"
+    gradle: "8.9 (installed, no gradlew)"
+  Pictureshop:
+    type: gradle
+    status: planned
+    java: "17"
+    gradle: "8.7 (installed, no gradlew)"
+    note: Existing workflow caches the debug keystore across builds.
+  fresh-start-touch-wipe-out:
+    type: gradle
+    status: planned
+    note: Has gradlew but no workflow yet.
+  Touch_7_Come_11:
+    type: capacitor
+    status: planned
+    java: "21"
+    note: npm test, npx cap add/sync android, then gradle in android/. Needs a capacitor variant of the reusable workflow.
+  Touch-One:
+    type: zip
+    status: blocked
+    note: Source reassembled from .touch-uploads at build time. Migrate to a normal source tree after the pilot.
+  Touch_Schatzi:
+    type: zip
+    status: blocked
+    note: Same as Touch-One.
+  app-visual-builder:
+    type: zip
+    status: blocked
+    note: Builds from AppVisualBuilder.zip. Migrate after the pilot.
+  arcade-touch:
+    type: zip
+    status: blocked
+    note: Builds touch-pocket-prototype from packed source. Migrate after the pilot.
+  Couchcast: {type: none, status: n/a}
+  ScoobertsHangman: {type: none, status: n/a, note: art assets only}
+  Touch-Find-A-Word: {type: none, status: n/a, note: assets and uploads only}
+  Touch-Modules: {type: none, status: n/a}
+  Touch-Rewards: {type: none, status: n/a, note: living spec only}
+  Touch-Word-Bomb: {type: none, status: n/a}
+  Touch_Reader: {type: none, status: n/a, note: artwork zip only}
+  touch-sports-guide: {type: none, status: n/a}
+  touch-development: {type: none, status: n/a, note: this hub}

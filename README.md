@@ -1,6 +1,6 @@
 # Touch Development
 
-Private master infrastructure repository for the Touch app family.
+Master infrastructure repository for the Touch app family. It is public on purpose: private app repositories call its reusable workflow.
 
 This repository is the durable source of truth for development workflow shared across Touch projects. Individual app repositories contain app-specific source and specifications; universal development behavior belongs here.
 
@@ -24,3 +24,7 @@ Individual repositories
 - app-specific assets
 - app-specific specifications
 - a pointer back to this master repository
+
+## Touch AutoBuild
+
+Shared Android build system for all Touch repositories: see `AUTOBUILD.md` (assignment loop and rules), `autobuild/projects.yml` (registry), `autobuild/ONBOARDING.md`, and the reusable workflow in `.github/workflows/android-build.yml`.
