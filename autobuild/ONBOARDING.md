@@ -21,3 +21,7 @@ Production callers pin the hub workflow to a reviewed commit SHA with a version 
 ## Permissions
 
 Callers declare `contents: write` as the ceiling. The shared workflow gives write access only to its `fallback` and `housekeeping` jobs (DEV/TEST prerelease delivery and cleanup, `claude/**` only, no checkout); the job that runs Gradle and repository code is read-only. See `DEVTEST-DELIVERY.md`.
+
+## Older template
+
+`templates/android-debug-apk.yml` is the pre-AutoBuild standalone build template (a full workflow copied into each repo). New and migrated repositories use `templates/autobuild-caller.yml` instead. The old template stays for repositories that have not been onboarded yet and is retired once all buildable repositories use the shared workflow (rollout Phase 6).
