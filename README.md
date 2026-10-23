@@ -1,6 +1,6 @@
 # Touch Development
 
-Private master infrastructure repository for the Touch app family.
+Master infrastructure repository for the Touch app family. It is public on purpose: private app repositories call its reusable workflow.
 
 This repository is the durable source of truth for development workflow shared across Touch projects. Individual app repositories contain app-specific source and specifications; universal development behavior belongs here.
 
