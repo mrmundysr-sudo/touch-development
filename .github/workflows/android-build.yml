@@ -165,15 +165,30 @@ jobs:
           set -euo pipefail
           test -s "$APK"
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          # 1. Signature and integrity: any tampering or corruption fails here.
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
-          # aapt can exit non-zero for APKs whose manifest references framework resources
-          # (for example a default android:icon); the APK is still valid. Require the package
-          # line instead of the exit code, and avoid SIGPIPE from head under pipefail.
+          # 2. ZIP integrity: every entry must decompress cleanly.
+          unzip -tq "$APK"
+          # 3. Structure: a manifest and compiled code must be present.
+          LISTING="$(unzip -Z1 "$APK")"
+          grep -qx 'AndroidManifest.xml' <<<"$LISTING" || { echo "::error::APK has no AndroidManifest.xml"; exit 1; }
+          grep -Eqx 'classes[0-9]*\.dex' <<<"$LISTING" || { echo "::error::APK has no classes.dex"; exit 1; }
+          # 4. Package identity. aapt can exit non-zero when a manifest references a framework
+          #    resource (for example the default android:icon), although the APK is valid. Accept
+          #    that one known message only; any other aapt error still fails, and the package
+          #    line must be present with a non-empty name.
           BADGING="$(mktemp)"
-          "$BUILD_TOOLS/aapt" dump badging "$APK" > "$BADGING" 2>&1 || echo "::warning::aapt dump badging exited non-zero (see output); checking package line"
-          grep -m1 '^package: name=' "$BADGING" || { echo "::error::aapt could not read the package name from the APK"; exit 1; }
+          rc=0
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > "$BADGING" 2>&1 || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            OTHER="$(grep 'ERROR' "$BADGING" | grep -v "attribute value reference does not exist" || true)"
+            if [ -n "$OTHER" ] || ! grep -q "attribute value reference does not exist" "$BADGING"; then
+              echo "::error::aapt dump badging failed (exit $rc)"; sed -n '1,30p' "$BADGING"; exit 1
+            fi
+            echo "::warning::aapt reported an unresolved framework resource reference (known, harmless); continuing"
+          fi
+          grep -m1 -E "^package: name='[^']+'" "$BADGING" || { echo "::error::aapt could not read the package name from the APK"; exit 1; }
           sed -n '1,20p' "$BADGING"
-          unzip -t "$APK" | tail -n 1
           SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
           {
             echo "### Debug APK validated"
