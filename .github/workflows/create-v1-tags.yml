@@ -1,0 +1,61 @@
+# One-off, owner-approved release tagging for the hub: creates v1.0.0 and v1 at the verified merge
+# commit of PR #2. Everything is hard-coded and nothing is an input, so it cannot be pointed at
+# another commit or tag. It refuses to touch an existing tag that points anywhere else, and it
+# never moves or deletes a tag (moving v1 later needs the owner's approval and a new workflow run
+# with different, reviewed content). Lives on a development branch; not part of main.
+name: Create v1.0.0 and v1 tags (one-off)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: create-v1-tags
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out main with full history (no persisted credentials)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify the commit, then create the missing tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED: 1926b52b24140572a299004a023f692f9357b83e
+          EXPECTED_TREE: a5cd8b573563f48dd699984ac88207c0a0be50fa
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 1. Verify the exact commit before creating anything.
+          [ "$(git cat-file -t "$EXPECTED")" = commit ] || { echo "::error::$EXPECTED is not a commit"; exit 1; }
+          [ "$(git rev-parse "$EXPECTED")" = "$EXPECTED" ] || { echo "::error::SHA did not resolve to itself"; exit 1; }
+          git merge-base --is-ancestor "$EXPECTED" origin/main || { echo "::error::$EXPECTED is not on main"; exit 1; }
+          [ "$(git rev-parse "$EXPECTED^{tree}")" = "$EXPECTED_TREE" ] || { echo "::error::tree differs from the reviewed tree"; exit 1; }
+          echo "verified: $EXPECTED is on main with the reviewed tree $EXPECTED_TREE"
+          # 2. Create each tag only if it does not exist. Never overwrite, move or delete.
+          for tag in v1.0.0 v1; do
+            cur="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha 2>/dev/null || true)"
+            if [ -n "$cur" ]; then
+              if [ "$cur" = "$EXPECTED" ]; then
+                echo "$tag already points at $EXPECTED: no change"; continue
+              fi
+              echo "::error::$tag already exists and points at $cur, refusing to touch it"; exit 1
+            fi
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$EXPECTED" --jq '"created \(.ref) -> \(.object.sha)"'
+          done
+          # 3. Verify the result from GitHub.
+          for tag in v1.0.0 v1; do
+            got="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)"
+            [ "$got" = "$EXPECTED" ] || { echo "::error::$tag resolves to $got, expected $EXPECTED"; exit 1; }
+            wf="$(gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/android-build.yml?ref=$tag" --jq .sha)"
+            echo "TAG-VERIFIED $tag -> $got (android-build.yml blob $wf)"
+          done
