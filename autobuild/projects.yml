@@ -45,8 +45,9 @@ projects:
     onboarding: "merged 9e27d82; caller pinned to hub 1926b52 (v1.0.0)"
   touch-cast:
     type: gradle
-    status: blocked
-    note: "Caller on draft PR touch-cast#1 (not merged). Build fails on pre-existing app compile errors (CastMediaControlIntent import, JSONTokener.stringToValue); owner decision needed."
+    status: active
+    onboarding: "merged PR #1 (436e58e); caller pinned to hub 1926b52 (v1.0.0)"
+    note: "App never compiled: draft PR touch-cast#2 (claude/fix-compile-errors, 728db71) fixes CastMediaControlIntent import, JSONTokener decode and a Kotlin duplicate-class conflict; green build and APK verified; awaiting owner approval to merge app-code changes."
     java: "17"
     gradle: "8.9 (installed, no gradlew)"
   Pictureshop:
@@ -58,8 +59,9 @@ projects:
     note: Existing workflow caches the debug keystore across builds.
   fresh-start-touch-wipe-out:
     type: gradle
-    status: blocked
-    note: "Not buildable: settings include :app but the repo has a flat layout (no app module, no res). Trial build class=code; no caller merged."
+    status: active
+    onboarding: "merged PR #1 (dd8e550); caller pinned to hub 1926b52 (v1.0.0)"
+    note: "Flat upload of Touch Clean 0.13.1. Draft PR fresh-start-touch-wipe-out#2 (claude/restore-layout, 6891810) restores the Gradle layout by renames plus app/build.gradle; green build and artifact verified (run 39899969630); awaiting owner approval. Until merged, main stays unbuildable and only claude/** branches build."
   Touch_7_Come_11:
     type: capacitor
     status: planned
@@ -75,8 +77,9 @@ projects:
     note: Same as Touch-One.
   app-visual-builder:
     type: zip
-    status: blocked
-    note: Builds from AppVisualBuilder.zip. Migrate after the pilot.
+    status: onboarding-pr
+    gradle: "8.9 (installed, no gradlew)"
+    note: "Draft PR app-visual-builder#1 unpacks the ZIP (backup kept) and adds the caller. Needs hub fix touch-development#5 (aapt exit code on framework icon) first."
   arcade-touch:
     type: zip
     status: blocked
