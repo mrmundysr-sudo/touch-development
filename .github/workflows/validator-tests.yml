@@ -1,0 +1,35 @@
+name: Validator tests
+
+# Tests the APK validation step of the shared android-build.yml against real fixture APKs.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/android-build.yml"
+      - "autobuild/tests/validator/**"
+      - ".github/workflows/validator-tests.yml"
+  push:
+    branches: ["claude/**"]
+    paths:
+      - ".github/workflows/android-build.yml"
+      - "autobuild/tests/validator/**"
+      - ".github/workflows/validator-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Run validator tests
+        run: bash autobuild/tests/validator/run-tests.sh
