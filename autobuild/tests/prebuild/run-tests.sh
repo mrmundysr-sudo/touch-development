@@ -20,6 +20,27 @@ else:
 PY
 [ -s "$WORK/step.sh" ] || exit 2
 
+# Static checks: a prebuild may create project_dir, so steps that can run before it exists or after a
+# failed prebuild must not use project_dir as their working directory, and the Gradle cache must be off.
+python3 - "$WORKFLOW" <<'PY' || exit 3
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1]))
+steps = d["jobs"]["build"]["steps"]
+byid = {st.get("id"): st for st in steps if st.get("id")}
+ok = True
+def need(cond, msg):
+    global ok
+    if not cond: print("FAIL static:", msg); ok = False
+names = {st["name"]: st for st in steps if "name" in st}
+need("github.workspace" in str(byid["outcomes"].get("working-directory", "")), "Record outcomes must run in the workspace")
+need("github.workspace" in str(names["Pause before upload retry"].get("working-directory", "")), "Pause step must run in the workspace")
+need("github.workspace" in str(names["Install extra Android SDK packages"].get("working-directory", "")), "SDK step must run in the workspace")
+need("prebuild_script == ''" in str([st for st in steps if str(st.get("uses","")).startswith("actions/setup-java")][0]["with"]["cache"]), "Gradle cache must be disabled when a prebuild script is used")
+need("failure" in str(byid["build"].get("if", "")) and "prebuild" in str(byid["build"].get("if", "")), "Build must be skipped after a failed prebuild")
+if ok: print("ok   static workflow checks")
+sys.exit(0 if ok else 1)
+PY
+
 WS="$WORK/ws"; mkdir -p "$WS/.autobuild" "$WS/tools" "$WORK/outside"
 git -C "$WS" init -q; git -C "$WS" config user.email t@t; git -C "$WS" config user.name t
 cat > "$WS/.autobuild/ok.sh" <<'S'
