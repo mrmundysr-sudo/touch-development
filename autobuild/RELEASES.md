@@ -19,3 +19,6 @@ Claude Code Cloud sessions cannot push tags or create refs, so both tags were cr
 | TouchV | #1 | `c4d09789573449bed0439354b523ba3a3d36af33` |
 | Touch-Parchis | #3 | `9e27d82390016ffde45a76289182b13e0b8b8502` |
 | Touch-Toolbox | #2 | `8bba2ee950e85a64c5fa14875d62d81aa9cdf1c5` |
+| Pictureshop | #1 | `16947a8a4cea54090aa79d1afc94c4c9cf342a93` |
+| touch-cast | #1 | `436e58ef2ea48bae70f5f2f3058a1b513bafcb64` |
+| fresh-start-touch-wipe-out | #1 | `dd8e55024f281eb89bed357b6b55e63a1c680f96` |
