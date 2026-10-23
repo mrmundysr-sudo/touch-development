@@ -6,14 +6,14 @@ owner: mrmundysr-sudo
 projects:
   touch-clean:
     type: gradle
-    status: onboarding-pr
+    status: active
     project_dir: "."
     java: "17"
     gradle: wrapper
     tasks: assembleDebug
     apk: app/build/outputs/apk/debug/app-debug.apk
     existing_workflow: build-debug-apk.yml
-    onboarding: "draft PR touch-clean#6 (branch claude/autobuild-pilot); private repo: artifact storage restricted, uses DEV/TEST prerelease fallback"
+    onboarding: "merged 9172cc0; caller pinned to hub 1926b52 (v1.0.0)"
   Touch-Developer-:
     type: gradle
     status: planned
@@ -23,26 +23,26 @@ projects:
     tasks: "testDebugUnitTest lintDebug assembleDebug"
   TouchV:
     type: gradle
-    status: onboarding-branch
+    status: active
     java: "17"
     gradle: wrapper
     tasks: ":app:assembleDebug"
     existing_workflow: android.yml
-    onboarding: "branch claude/autobuild-onboarding pushed; public repo; artifact stored on first run"
+    onboarding: "merged c4d0978; caller pinned to hub 1926b52 (v1.0.0)"
   Touch-Toolbox:
     type: gradle
-    status: onboarding-branch
+    status: active
     java: "21"
     gradle: wrapper (8.9)
     note: Two overlapping workflows (android-debug-apk.yml, build.yml); consolidate before onboarding.
-    onboarding: "branch claude/autobuild-onboarding pushed (caller only; the two existing workflows are not consolidated yet); public repo; artifact stored on first run"
+    onboarding: "merged 8bba2ee; caller pinned to hub 1926b52 (v1.0.0)"
   Touch-Parchis:
     type: gradle
-    status: onboarding-branch
+    status: active
     project_dir: TouchParchis
     java: "17"
     tasks: "clean test lintDebug assembleDebug"
-    onboarding: "branch claude/autobuild-onboarding pushed; public repo; artifact stored on first run"
+    onboarding: "merged 9e27d82; caller pinned to hub 1926b52 (v1.0.0)"
   touch-cast:
     type: gradle
     status: planned

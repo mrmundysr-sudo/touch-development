@@ -14,7 +14,7 @@ Visibility matters: public repos store Actions artifacts normally; private repos
 | 0.4 | Apply `security/` rulesets (hub first); verify plan limits for private repos | owner | owner settings |
 | 0.5 | Billing: resolve artifact storage for private repos (optional; fallback works meanwhile) | owner | owner |
 
-## Phase 1: callers already prepared (public repos plus the pilot)
+## Phase 1: callers (DONE 2026-10-23: all four merged and validated)
 
 Each gets: `.github/workflows/autobuild.yml` pinned to the reviewed hub SHA (`@<sha> # v1.0.0`), a `CLAUDE.md` pointer, and an onboarding PR for the owner to merge. Existing `main` workflows stay unchanged.
 

@@ -64,5 +64,7 @@ Claude's own Claude Code Cloud sessions cannot create, edit or delete releases (
 
 ## Caveats
 
+* **Stale branch tip.** If the branch tip moves past the commit being built while the run is still in progress without cancelling it (for example a `[skip ci]` commit lands mid-run), `gh release create --target <built SHA>` can be refused with `HTTP 403 Resource not accessible by integration` and the run fails in the `fallback` job. Observed on 2026-10-23. A normal push cancels the older run (`cancel-in-progress`), so this is rare; re-run on the current tip (`workflow_dispatch`) and it succeeds. Do not push `[skip ci]` commits while a run is in flight.
+
 * A release publishes a tag, which can trigger workflows that listen to `release` or `create` events. None of the current repositories do; check before onboarding a repository that does.
 * The APK is debug-signed; installing over a differently signed debug build requires uninstalling first.
