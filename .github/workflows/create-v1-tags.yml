@@ -7,6 +7,11 @@ name: Create v1.0.0 and v1 tags (one-off)
 
 on:
   workflow_dispatch:
+  # A dispatch-only workflow is not indexed until it exists on the default branch (a protected-
+  # infrastructure change). Running on a push to this one dev branch, for this one file, avoids that.
+  push:
+    branches: ["claude/create-v1-tags"]
+    paths: [".github/workflows/create-v1-tags.yml"]
 
 permissions:
   contents: write
