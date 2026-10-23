@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   build:
-    uses: mrmundysr-sudo/touch-development/.github/workflows/android-build.yml@REVIEWED_COMMIT_SHA # v1.0.0
+    uses: mrmundysr-sudo/touch-development/.github/workflows/android-build.yml@REVIEWED_COMMIT_SHA # v1.0.1
     with:
       artifact_name: APP_NAME-debug-${{ github.run_number }}
       project_dir: "."

@@ -4,7 +4,7 @@ Production callers pin the reusable workflow to a **reviewed commit SHA** and re
 comment. Tags exist for release management and documentation; callers do not follow them.
 
 ```yaml
-uses: mrmundysr-sudo/touch-development/.github/workflows/android-build.yml@<40-char-sha> # v1.0.0
+uses: mrmundysr-sudo/touch-development/.github/workflows/android-build.yml@<40-char-sha> # v1.0.1
 ```
 
 A SHA cannot move, so a caller changes only through a reviewed edit in its own repository.
