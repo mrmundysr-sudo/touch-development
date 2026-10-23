@@ -17,3 +17,7 @@ new one produce an equivalent APK, then the owner approves the merge.
 ## Version pinning
 
 Production callers pin the hub workflow to a reviewed commit SHA with a version comment (`@<sha> # v1.0.0`). Pilot callers may point at a hub dev branch only until the hub is merged and tagged; the onboarding PR must switch them to the SHA before merging. See `VERSIONING.md`.
+
+## Permissions
+
+Callers declare `contents: write` so the shared workflow can use the DEV/TEST prerelease fallback (`DEVTEST-DELIVERY.md`). It is only exercised on `claude/**` branches when artifact upload fails.

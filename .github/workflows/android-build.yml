@@ -3,6 +3,12 @@
 # Builds, validates and uploads a debug APK artifact. It never creates releases,
 # never pushes, and needs no secrets.
 #
+# Delivery: the APK is uploaded as an Actions artifact. If that fails (for example the private-repo
+# artifact storage allowance is used up) and the run is for a claude/** development branch, the
+# validated APK is published as a clearly labelled DEV/TEST *prerelease* asset instead (tag prefix
+# `devtest-`). It never runs for main or other branches, never creates a stable release, never moves a
+# stable tag. See autobuild/DEVTEST-DELIVERY.md. This needs `contents: write` from the caller.
+#
 # Failure handling: every failed run is classified so callers (and Claude) can tell
 # code problems from GitHub/infrastructure problems:
 #   failure_class = none | code | infrastructure
@@ -52,9 +58,15 @@ on:
       manual_intervention:
         description: "true when a person must act"
         value: ${{ jobs.build.outputs.manual_intervention }}
+      delivery:
+        description: artifact | devtest-release | none
+        value: ${{ jobs.build.outputs.delivery }}
+      delivery_url:
+        description: URL of the DEV/TEST prerelease when delivery=devtest-release
+        value: ${{ jobs.build.outputs.delivery_url }}
 
 permissions:
-  contents: read
+  contents: write   # only used by the DEV/TEST prerelease fallback; callers must grant it
 
 jobs:
   build:
@@ -63,6 +75,8 @@ jobs:
     outputs:
       failure_class: ${{ steps.classify.outputs.failure_class }}
       manual_intervention: ${{ steps.classify.outputs.manual_intervention }}
+      delivery: ${{ steps.classify.outputs.delivery }}
+      delivery_url: ${{ steps.fallback.outputs.url }}
     defaults:
       run:
         working-directory: ${{ inputs.project_dir }}
@@ -164,6 +178,33 @@ jobs:
           retention-days: ${{ inputs.retention_days }}
           overwrite: true
 
+      - name: DEV/TEST delivery fallback (GitHub prerelease asset)
+        id: fallback
+        if: ${{ always() && steps.validate.outcome == 'success' && steps.upload.outcome == 'failure' && steps.upload_retry.outcome != 'success' && startsWith(github.ref, 'refs/heads/claude/') }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_PATH: ${{ inputs.apk_path }}
+          ART: ${{ inputs.artifact_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="devtest-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          case "$TAG" in devtest-*) ;; *) echo "refusing non-devtest tag"; exit 1;; esac
+          ASSET="$RUNNER_TEMP/${ART}-DEVTEST.apk"
+          cp "$APK_PATH" "$ASSET"
+          NOTES="DEV/TEST BUILD - NOT A PRODUCTION RELEASE.
+          Built by Touch AutoBuild from branch ${GITHUB_REF_NAME} at ${GITHUB_SHA}.
+          Debug-signed APK. Published as a prerelease only because the normal Actions artifact upload failed.
+          Safe to delete after 7 days (see autobuild/DEVTEST-DELIVERY.md in touch-development)."
+          gh release create "$TAG" "$ASSET" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "DEV/TEST BUILD (not a release): ${ART} - ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}" \
+            --notes "$NOTES"
+          URL="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq .url)"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "::warning title=DEV/TEST prerelease fallback::Artifact upload failed; APK published as DEV/TEST prerelease: $URL"
+
       - name: Classify result
         id: classify
         if: ${{ always() }}
@@ -173,9 +214,11 @@ jobs:
           VALIDATE: ${{ steps.validate.outcome }}
           UPLOAD: ${{ steps.upload.outcome }}
           UPLOAD_RETRY: ${{ steps.upload_retry.outcome }}
+          FALLBACK: ${{ steps.fallback.outcome }}
+          FALLBACK_URL: ${{ steps.fallback.outputs.url }}
         shell: bash
         run: |
-          class=none; manual=false; reason="build, validation and upload succeeded"
+          class=none; manual=false; delivery=none; reason="build, validation and upload succeeded"
           if [ "$BUILD" = failure ]; then
             if [ "$INFRA_ERR" = true ]; then
               class=infrastructure; manual=false
@@ -187,17 +230,25 @@ jobs:
             class=infrastructure; reason="Build did not run (earlier step failed: checkout or toolchain setup). Re-run the job."
           elif [ "$VALIDATE" = failure ]; then
             class=code; reason="APK built but failed package/signing validation. Treat as a build-configuration problem (counts toward the 3 repairs)."
+          elif [ "$UPLOAD" = failure ] && [ "$UPLOAD_RETRY" != success ] && [ "$FALLBACK" = success ]; then
+            class=none; delivery=devtest-release
+            reason="APK built and validated. Artifact upload failed, so it was delivered as a DEV/TEST prerelease asset (not a production release): $FALLBACK_URL"
           elif [ "$UPLOAD" = failure ] && [ "$UPLOAD_RETRY" != success ]; then
             class=infrastructure; manual=true
             reason="APK is built and validated but could not be stored. Most likely the Actions artifact-storage allowance is used up: for PRIVATE repositories this is the plan allowance (public repositories are not metered) and GitHub can take hours, or until the billing-cycle reset, to reflect freed space; otherwise an upload outage or permissions. Check Settings > Billing and plans > Actions, free space or raise the spending limit, then start a fresh run. Do not change code."
           fi
+          if [ "$class" = none ] && [ "$delivery" = none ]; then delivery=artifact; fi
+          if [ "$class" != none ]; then delivery=none; fi
           {
             echo "failure_class=$class"
             echo "manual_intervention=$manual"
+            echo "delivery=$delivery"
           } >> "$GITHUB_OUTPUT"
-          echo "AUTOBUILD-RESULT class=$class manual_intervention=$manual build=$BUILD validate=$VALIDATE upload=$UPLOAD retry=${UPLOAD_RETRY:-n/a}"
+          echo "AUTOBUILD-RESULT class=$class manual_intervention=$manual delivery=$delivery build=$BUILD validate=$VALIDATE upload=$UPLOAD retry=${UPLOAD_RETRY:-n/a} fallback=${FALLBACK:-n/a}"
+          [ -n "${FALLBACK_URL:-}" ] && [ "$delivery" = devtest-release ] && echo "DELIVERY-URL $FALLBACK_URL" || true
           {
             echo "### AutoBuild result: \`$class\`"
+            echo "- delivery: **$delivery**"
             echo "- manual intervention required: **$manual**"
             echo "- $reason"
           } >> "$GITHUB_STEP_SUMMARY"

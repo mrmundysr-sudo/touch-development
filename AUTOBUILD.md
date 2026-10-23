@@ -29,11 +29,12 @@ Applies to every Android repository owned by mrmundysr-sudo. The registry is
 ## Reading the result: code vs infrastructure
 
 Every run ends with a log line `AUTOBUILD-RESULT class=<none|code|infrastructure> manual_intervention=<true|false> ...`
-(also in the run summary and as the `failure_class` / `manual_intervention` workflow outputs).
+(also in the run summary and as the `failure_class` / `manual_intervention` / `delivery` / `delivery_url` workflow outputs).
 
 | class | meaning | what Claude does |
 |---|---|---|
-| `none` | built, validated, stored | deliver the APK |
+| `none`, delivery=artifact | built, validated, stored as an Actions artifact | deliver the artifact link |
+| `none`, delivery=devtest-release | built, validated; artifact upload failed so the APK was published as a **DEV/TEST prerelease** (see `autobuild/DEVTEST-DELIVERY.md`) | deliver the `DELIVERY-URL`, say it is a DEV/TEST prerelease, mention cleanup |
 | `code` | compile/test/lint/config error, or APK failed validation | diagnose and repair (max 3) |
 | `infrastructure`, manual=false | network/repo/disk error that survived one automatic retry, or job setup failed | re-run failed jobs once; if it fails again, report; never edit code |
 | `infrastructure`, manual=true | APK built but could not be stored (usually the artifact storage allowance; applies to **private** repos only, public repos are not metered) | stop, report **MANUAL INTERVENTION REQUIRED**, schedule one re-check, never edit code |
